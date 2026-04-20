@@ -13,36 +13,37 @@
 | Скрипт | Что ставит | Зачем |
 |---|---|---|
 | `install.sh` | Traefik | Базовый SNI-роутер на порту 443. Без него ничего не работает. |
-| `install-mtproto.sh` | MTProto Proxy (Fake TLS) | Прокси для Telegram. Маскирует трафик под обычный HTTPS к выбранному домену. Работает только для Telegram — остальной трафик не затрагивается. |
+| `install-mtproto.sh` | [Teleproxy](https://github.com/teleproxy/teleproxy) (Fake TLS) | Прокси для Telegram на базе Teleproxy. DPI-устойчивая маскировка: Dynamic Record Sizing, domain fronting, anti-replay, ServerHello фрагментация. Работает только для Telegram. |
 | `install-decoy.sh` | Сайт-заглушка (nginx) | Логин-форма, которая отдаётся при любом незнакомом SNI или прямом заходе по IP. Делает сервер неотличимым от обычного VPS с админкой. Let's Encrypt сертификат из коробки. |
 
 ## Как это работает
 
 ```
-Telegram   → :443 → Traefik → (SNI = tg.example.com) → MTProto Proxy → Telegram серверы
-DPI-проба  → :443 → Traefik → (SNI = любой другой)   → nginx         → страница логина
+Telegram   → :443 → Traefik → (SNI = tg.example.com) → Teleproxy → Telegram серверы
+DPI-проба  → :443 → Traefik → (SNI = tg.example.com) → Teleproxy → реальный сайт (domain fronting)
+Браузер    → :443 → Traefik → (SNI = любой другой)   → nginx     → страница логина
 ```
 
 Traefik читает SNI из TLS ClientHello и направляет соединение в нужный контейнер. TLS при этом **не терминируется** — Traefik работает в режиме passthrough.
 
-Для стороннего наблюдателя (DPI / ТСПУ) это обычное HTTPS-соединение с легитимным доменом.
+Teleproxy (MTProto прокси) дополнительно защищает от обнаружения: Dynamic Record Sizing имитирует реальный TLS slow-start, domain fronting прозрачно проксирует невалидные подключения на настоящий сайт, anti-replay отсекает повторные хендшейки.
 
 ## Установка
 
 ```bash
-REPO="https://raw.githubusercontent.com/wooogoblin/vpntools/master/traefik-sni-hub"
+REPO="https://raw.githubusercontent.com/SergeyNakhankov/vpntools/master/traefik-sni-hub"
 
 # 1. Traefik (база) — ставится первым
 curl -sSL ${REPO}/install.sh | sudo bash
 
-# 2. MTProto Proxy для Telegram
-curl -sSL ${REPO}/install-mtproto.sh | sudo bash
-
-# 3. Сайт-заглушка (рекомендуется)
+# 2. Сайт-заглушка — ставится до MTProto
 curl -sSL ${REPO}/install-decoy.sh | sudo bash
+
+# 3. MTProto Proxy для Telegram
+curl -sSL ${REPO}/install-mtproto.sh | sudo bash
 ```
 
-При установке MTProto скрипт предложит выбрать домен маскировки (SNI) в интерактивном меню, либо ввести свой.
+Порядок важен: сначала decoy, потом MTProto. Скрипт MTProto автоматически обнаружит decoy и направит domain fronting на локальный nginx вместо внешнего сайта.
 
 ## Выбор SNI-домена
 
@@ -61,7 +62,7 @@ curl -sSL ${REPO}/install-mtproto.sh | sudo FAKE_TLS_DOMAIN=tg.example.com bash
 ## Удаление
 
 ```bash
-REPO="https://raw.githubusercontent.com/wooogoblin/vpntools/master/traefik-sni-hub"
+REPO="https://raw.githubusercontent.com/SergeyNakhankov/vpntools/master/traefik-sni-hub"
 
 # Только MTProto (Traefik останется)
 curl -sSL ${REPO}/uninstall-mtproto.sh | sudo bash
@@ -99,7 +100,7 @@ cd /opt/mtproto-proxy/services/mtproto && docker compose pull && docker compose 
 │       └── decoy.yml               # Catch-all → заглушка
 └── services/
     ├── mtproto/
-    │   ├── docker-compose.yml      # Контейнер mtg
+    │   ├── docker-compose.yml      # Контейнер Teleproxy
     │   └── .env                    # Секрет + порт
     └── decoy/
         ├── docker-compose.yml      # Контейнер nginx

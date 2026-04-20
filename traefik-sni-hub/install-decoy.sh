@@ -200,7 +200,7 @@ server {
 NGINXEOF
 
 # ─── docker-compose.yml ────────────────────────────────────────────
-cat > "${SERVICE_DIR}/docker-compose.yml" << 'EOF'
+cat > "${SERVICE_DIR}/docker-compose.yml" <<DEOF
 services:
   decoy:
     image: nginx:alpine
@@ -213,7 +213,9 @@ services:
     expose:
       - "8443"
     networks:
-      - proxy
+      proxy:
+        aliases:
+          - ${DECOY_DOMAIN}
     logging:
       driver: json-file
       options:
@@ -223,7 +225,10 @@ services:
 networks:
   proxy:
     external: true
-EOF
+DEOF
+
+# ─── Сохраняем домен ───────────────────────────────────────────────
+echo "DECOY_DOMAIN=${DECOY_DOMAIN}" > "${SERVICE_DIR}/.env"
 
 # ─── Traefik catch-all ──────────────────────────────────────────────
 cat > "${INSTALL_DIR}/traefik/dynamic/decoy.yml" << 'TCPYML'
