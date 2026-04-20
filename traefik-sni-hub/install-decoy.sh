@@ -3,6 +3,8 @@ set -euo pipefail
 
 INSTALL_DIR="${INSTALL_DIR:-/opt/mtproto-proxy}"
 SERVICE_DIR="${INSTALL_DIR}/services/decoy"
+MTPROTO_DIR="${INSTALL_DIR}/services/mtproto"
+REPO_BASE="${REPO_BASE:-https://raw.githubusercontent.com/SergeyNakhankov/vpntools/master/traefik-sni-hub}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -31,12 +33,22 @@ fi
 
 # ─── Домен ──────────────────────────────────────────────────────────
 if [[ -z "${DECOY_DOMAIN:-}" ]]; then
+    # Если mtproto уже установлен — предложить его домен
+    SUGGESTED=""
+    if [[ -f "${MTPROTO_DIR}/.env" ]]; then
+        SUGGESTED=$(grep EE_DOMAIN "${MTPROTO_DIR}/.env" | cut -d= -f2 | sed 's/:.*$//')
+    fi
+
     echo ""
     echo -e "${BOLD} Введи домен для сайта-заглушки:${NC}"
     echo -e "  Домен должен быть привязан к IP этого сервера (A-запись)."
-    echo -e "  Пример: ${CYAN}example.com${NC} или ${CYAN}panel.example.com${NC}"
-    echo ""
-    read -rp "  Домен: " DECOY_DOMAIN < /dev/tty
+    if [[ -n "$SUGGESTED" ]]; then
+        echo -e "  MTProto использует: ${CYAN}${SUGGESTED}${NC}"
+        read -rp "  Домен (Enter = ${SUGGESTED}): " DECOY_DOMAIN < /dev/tty
+        DECOY_DOMAIN="${DECOY_DOMAIN:-$SUGGESTED}"
+    else
+        read -rp "  Домен: " DECOY_DOMAIN < /dev/tty
+    fi
     [[ -n "$DECOY_DOMAIN" ]] || fail "Домен не может быть пустым"
 else
     ok "Домен (из env): ${BOLD}${DECOY_DOMAIN}${NC}"
@@ -49,8 +61,7 @@ SERVER_IP=$(curl -s --max-time 5 ifconfig.me || echo "")
 USE_SELF_SIGNED=false
 
 if [[ -z "$RESOLVED_IP" ]]; then
-    echo -e "  ${YELLOW}⚠  DNS не резолвится. Let's Encrypt не выдаст сертификат.${NC}"
-    echo -e "  Создай A-запись ${DECOY_DOMAIN} → ${SERVER_IP} и подожди 2-5 минут."
+    echo -e "  ${YELLOW}⚠  DNS не резолвится.${NC}"
     USE_SELF_SIGNED=true
 elif [[ "$RESOLVED_IP" != "$SERVER_IP" ]]; then
     echo -e "  ${YELLOW}⚠  DNS → ${RESOLVED_IP}, IP сервера → ${SERVER_IP}. Не совпадает.${NC}"
@@ -67,7 +78,7 @@ if [[ "$USE_SELF_SIGNED" == true ]]; then
     fi
 fi
 
-# ─── Email для Let's Encrypt ────────────────────────────────────────
+# ─── Email для LE ───────────────────────────────────────────────────
 CERTBOT_EMAIL=""
 if [[ "$USE_SELF_SIGNED" == false ]]; then
     if [[ -n "${LETSENCRYPT_EMAIL:-}" ]]; then
@@ -80,60 +91,16 @@ fi
 # ─── Структура ──────────────────────────────────────────────────────
 mkdir -p "${SERVICE_DIR}/html" "${SERVICE_DIR}/certs"
 
-# ─── HTML ───────────────────────────────────────────────────────────
-info "Создаю страницу…"
-cat > "${SERVICE_DIR}/html/index.html" << 'HTMLEOF'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign In</title>
-    <style>
-        *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f1117;color:#e1e4e8;height:100vh;display:flex;align-items:center;justify-content:center}
-        .c{width:100%;max-width:380px;padding:0 20px}
-        .logo{text-align:center;margin-bottom:32px}
-        .logo-icon{width:48px;height:48px;background:#2563eb;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;margin-bottom:16px}
-        .logo-icon svg{width:24px;height:24px;fill:#fff}
-        .logo h1{font-size:20px;font-weight:600;color:#f0f0f0}
-        .logo p{font-size:14px;color:#6b7280;margin-top:4px}
-        .fg{margin-bottom:16px}
-        .fg label{display:block;font-size:13px;font-weight:500;color:#9ca3af;margin-bottom:6px}
-        .fg input{width:100%;padding:10px 14px;background:#1a1d27;border:1px solid #2d3140;border-radius:8px;color:#e1e4e8;font-size:14px;outline:none;transition:border-color .2s}
-        .fg input:focus{border-color:#2563eb}
-        .fg input::placeholder{color:#4b5563}
-        .rr{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;font-size:13px}
-        .rr label{display:flex;align-items:center;gap:8px;color:#9ca3af;cursor:pointer}
-        .rr input[type=checkbox]{accent-color:#2563eb}
-        .rr a{color:#2563eb;text-decoration:none}
-        .rr a:hover{text-decoration:underline}
-        .btn{width:100%;padding:10px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;transition:background .2s}
-        .btn:hover{background:#1d4ed8}
-        .err{display:none;background:#1c1215;border:1px solid #5c2131;color:#f87171;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
-        .ft{text-align:center;margin-top:32px;font-size:12px;color:#4b5563}
-    </style>
-</head>
-<body>
-<div class="c">
-    <div class="logo">
-        <div class="logo-icon"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></div>
-        <h1>Dashboard</h1>
-        <p>Sign in to your account</p>
-    </div>
-    <div class="err" id="e">Invalid credentials. Please try again.</div>
-    <form onsubmit="return h(event)">
-        <div class="fg"><label>Email</label><input type="email" placeholder="admin@example.com" required></div>
-        <div class="fg"><label>Password</label><input type="password" id="p" placeholder="••••••••" required></div>
-        <div class="rr"><label><input type="checkbox"> Remember me</label><a href="#">Forgot password?</a></div>
-        <button class="btn">Sign in</button>
-    </form>
-    <div class="ft">&copy; 2026 All rights reserved.</div>
-</div>
-<script>function h(e){e.preventDefault();document.getElementById('e').style.display='block';document.getElementById('p').value='';return false}</script>
-</body>
-</html>
-HTMLEOF
+# ─── Скачиваем файлы из репозитория ─────────────────────────────────
+info "Скачиваю фронтенд…"
+curl -sSL "${REPO_BASE}/decoy/index.html" -o "${SERVICE_DIR}/html/index.html" \
+    || fail "Не удалось скачать index.html"
+ok "index.html"
+
+info "Скачиваю конфигурацию nginx…"
+curl -sSL "${REPO_BASE}/decoy/nginx.conf" -o "${SERVICE_DIR}/nginx.conf" \
+    || fail "Не удалось скачать nginx.conf"
+ok "nginx.conf"
 
 # ─── Сертификат ─────────────────────────────────────────────────────
 if [[ "$USE_SELF_SIGNED" == true ]]; then
@@ -165,7 +132,6 @@ else
         ln -sf "live/${DECOY_DOMAIN}/privkey.pem" "${SERVICE_DIR}/certs/privkey.pem"
         ok "Let's Encrypt сертификат получен"
 
-        # Cron для обновления
         CRON_CMD="0 3 * * 0 docker run --rm -p 80:80 -v ${SERVICE_DIR}/certs:/etc/letsencrypt certbot/certbot renew --standalone && cd ${SERVICE_DIR} && docker compose restart decoy"
         (crontab -l 2>/dev/null | grep -v "certbot renew"; echo "$CRON_CMD") | crontab -
         ok "Cron для обновления сертификата добавлен"
@@ -182,22 +148,8 @@ else
     fi
 fi
 
-# ─── nginx.conf ─────────────────────────────────────────────────────
-cat > "${SERVICE_DIR}/nginx.conf" << 'NGINXEOF'
-server {
-    listen 8443 ssl;
-    http2 on;
-    ssl_certificate     /etc/nginx/certs/fullchain.pem;
-    ssl_certificate_key /etc/nginx/certs/privkey.pem;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-    root /usr/share/nginx/html;
-    index index.html;
-    location / { try_files $uri $uri/ =404; }
-    server_tokens off;
-}
-NGINXEOF
+# ─── .env ───────────────────────────────────────────────────────────
+echo "DECOY_DOMAIN=${DECOY_DOMAIN}" > "${SERVICE_DIR}/.env"
 
 # ─── docker-compose.yml ────────────────────────────────────────────
 cat > "${SERVICE_DIR}/docker-compose.yml" <<DEOF
@@ -226,9 +178,6 @@ networks:
   proxy:
     external: true
 DEOF
-
-# ─── Сохраняем домен ───────────────────────────────────────────────
-echo "DECOY_DOMAIN=${DECOY_DOMAIN}" > "${SERVICE_DIR}/.env"
 
 # ─── Traefik catch-all ──────────────────────────────────────────────
 cat > "${INSTALL_DIR}/traefik/dynamic/decoy.yml" << 'TCPYML'
@@ -266,6 +215,31 @@ else
     fail "Decoy не запустился. Проверь: cd ${SERVICE_DIR} && docker compose logs"
 fi
 
+# ─── Подхватываем MTProto ───────────────────────────────────────────
+MTPROTO_RECONFIGURED=false
+if [[ -f "${MTPROTO_DIR}/.env" ]]; then
+    source "${MTPROTO_DIR}/.env"
+    # Извлекаем домен без порта
+    CURRENT_DOMAIN=$(echo "${EE_DOMAIN}" | sed 's/:.*$//')
+
+    if [[ "$CURRENT_DOMAIN" == "$DECOY_DOMAIN" && "$EE_DOMAIN" != "${DECOY_DOMAIN}:8443" ]]; then
+        info "MTProto использует тот же домен (${CURRENT_DOMAIN}) → переключаю на локальный decoy…"
+        sed -i "s|^EE_DOMAIN=.*|EE_DOMAIN=${DECOY_DOMAIN}:8443|" "${MTPROTO_DIR}/.env"
+        cd "${MTPROTO_DIR}" && docker compose up -d --force-recreate
+        sleep 2
+        if docker ps --format '{{.Names}}' | grep -q mtproto; then
+            ok "MTProto перенастроен → domain fronting на локальный nginx"
+            MTPROTO_RECONFIGURED=true
+        else
+            echo -e "${YELLOW}⚠  MTProto не перезапустился. Проверь: cd ${MTPROTO_DIR} && docker compose logs${NC}"
+        fi
+    elif [[ "$CURRENT_DOMAIN" != "$DECOY_DOMAIN" ]]; then
+        echo -e "  ${YELLOW}⚠  MTProto использует другой домен (${CURRENT_DOMAIN}). Decoy не подключен к нему.${NC}"
+    else
+        ok "MTProto уже использует локальный decoy"
+    fi
+fi
+
 # ─── Результат ──────────────────────────────────────────────────────
 CERT_TYPE="Let's Encrypt"
 [[ "$USE_SELF_SIGNED" == true ]] && CERT_TYPE="Self-signed"
@@ -278,10 +252,18 @@ echo ""
 echo -e "  Домен:       ${BOLD}${DECOY_DOMAIN}${NC}"
 echo -e "  Сертификат:  ${CERT_TYPE}"
 echo -e "  Страница:    ${BOLD}https://${DECOY_DOMAIN}${NC}"
+if [[ "$MTPROTO_RECONFIGURED" == true ]]; then
+    echo -e "  MTProto:     ${GREEN}переключен на локальный decoy${NC}"
+fi
 echo ""
 echo -e "  Traefik роутинг:"
 echo -e "    Известный SNI  → сервис (MTProto и др.)"
-echo -e "    Любой другой   → ${BOLD}логин-форма${NC}"
+echo -e "    Любой другой   → ${BOLD}Meridian login${NC}"
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo "  Управление:"
+echo "    cd ${SERVICE_DIR}"
+echo "    docker compose logs -f       # логи"
+echo "    docker compose restart       # перезапуск"
 echo ""

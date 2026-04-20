@@ -43,7 +43,7 @@ curl -sSL ${REPO}/install-decoy.sh | sudo bash
 curl -sSL ${REPO}/install-mtproto.sh | sudo bash
 ```
 
-Порядок важен: сначала decoy, потом MTProto. Скрипт MTProto автоматически обнаружит decoy и направит domain fronting на локальный nginx вместо внешнего сайта.
+Порядок важен: Traefik первым, остальное — в любом порядке. Если decoy ставится после MTProto — он автоматически перенастроит MTProto на локальный domain fronting. Если до — MTProto сам обнаружит decoy при установке.
 
 ## Выбор SNI-домена
 
@@ -88,6 +88,22 @@ cd /opt/mtproto-proxy && docker compose pull && docker compose up -d
 cd /opt/mtproto-proxy/services/mtproto && docker compose pull && docker compose up -d
 ```
 
+## Структура репозитория
+
+```
+traefik-sni-hub/
+├── decoy/
+│   ├── index.html              # Фронтенд (логин-форма Meridian)
+│   └── nginx.conf              # Бэкенд (API /api/v1/auth/login → 401)
+├── install.sh                  # Traefik
+├── install-mtproto.sh          # MTProto (Teleproxy)
+├── install-decoy.sh            # Сайт-заглушка
+├── uninstall-mtproto.sh
+├── uninstall-decoy.sh
+├── uninstall.sh
+└── README.md
+```
+
 ## Структура на сервере
 
 ```
@@ -96,18 +112,19 @@ cd /opt/mtproto-proxy/services/mtproto && docker compose pull && docker compose 
 ├── traefik/
 │   ├── static.yml                  # Точка входа :443
 │   └── dynamic/
-│       ├── mtproto.yml             # SNI-роут → MTProto
+│       ├── mtproto.yml             # SNI-роут → Teleproxy
 │       └── decoy.yml               # Catch-all → заглушка
 └── services/
     ├── mtproto/
     │   ├── docker-compose.yml      # Контейнер Teleproxy
-    │   └── .env                    # Секрет + порт
+    │   └── .env                    # SECRET, EE_DOMAIN, PROXY_PORT
     └── decoy/
         ├── docker-compose.yml      # Контейнер nginx
-        ├── nginx.conf
+        ├── nginx.conf              # ← скачан из decoy/nginx.conf
+        ├── .env                    # DECOY_DOMAIN
         ├── certs/                  # TLS-сертификат
         └── html/
-            └── index.html          # Страница логина
+            └── index.html          # ← скачан из decoy/index.html
 ```
 
 ## Добавить свой сервис

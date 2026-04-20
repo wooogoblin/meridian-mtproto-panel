@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Meridian — Sign In</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230ea5e9'/><text x='50' y='70' font-size='60' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='700'>M</text></svg>">
+<meta name="description" content="Meridian Infrastructure Management Platform">
+<meta name="robots" content="noindex, nofollow">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0c0e14;color:#c9d1d9;min-height:100vh;display:flex}
+.left{flex:1;display:flex;align-items:center;justify-content:center;padding:40px}
+.right{display:none;flex:1;background:linear-gradient(135deg,#0c1929 0%,#0f2740 100%);align-items:center;justify-content:center;padding:60px;border-left:1px solid #1e2d3d}
+@media(min-width:960px){.right{display:flex}}
+.right-inner{max-width:400px}
+.right h2{font-size:22px;color:#e2e8f0;margin-bottom:16px;font-weight:600}
+.right p{font-size:14px;color:#64748b;line-height:1.7;margin-bottom:12px}
+.right .feat{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13px;color:#94a3b8}
+.right .feat svg{width:16px;height:16px;fill:#0ea5e9;flex-shrink:0}
+.card{width:100%;max-width:400px}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.brand-icon{width:40px;height:40px;background:#0ea5e9;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff}
+.brand h1{font-size:22px;font-weight:700;color:#f0f4f8}
+.sub{font-size:14px;color:#586e75;margin-bottom:32px}
+.fg{margin-bottom:18px}
+.fg label{display:block;font-size:13px;font-weight:500;color:#8b949e;margin-bottom:6px}
+.fg input{width:100%;padding:11px 14px;background:#161b22;border:1px solid #30363d;border-radius:8px;color:#e6edf3;font-size:14px;outline:none;transition:border-color .15s,box-shadow .15s}
+.fg input:focus{border-color:#0ea5e9;box-shadow:0 0 0 3px rgba(14,165,233,.15)}
+.fg input::placeholder{color:#484f58}
+.row{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;font-size:13px}
+.row label{display:flex;align-items:center;gap:8px;color:#8b949e;cursor:pointer;user-select:none}
+.row input[type=checkbox]{accent-color:#0ea5e9;width:14px;height:14px}
+.row a{color:#0ea5e9;text-decoration:none;font-weight:500}
+.row a:hover{text-decoration:underline}
+.btn{width:100%;padding:11px;background:#0ea5e9;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:8px;height:42px}
+.btn:hover{background:#0284c7}
+.btn:disabled{opacity:.7;cursor:not-allowed}
+.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.alert{padding:11px 14px;border-radius:8px;font-size:13px;margin-bottom:18px;display:none;line-height:1.5}
+.alert-err{background:#1c1215;border:1px solid #5c2131;color:#f87171}
+.alert-warn{background:#1a1806;border:1px solid #5c4a13;color:#fbbf24}
+.ft{text-align:center;margin-top:36px;font-size:12px;color:#30363d}
+.ft a{color:#484f58;text-decoration:none}
+.ft a:hover{color:#8b949e}
+.sep{margin:0 8px}
+</style>
+</head>
+<body>
+<div class="left">
+<div class="card">
+    <div class="brand"><div class="brand-icon">M</div><h1>Meridian</h1></div>
+    <p class="sub">Sign in to your workspace</p>
+    <div class="alert alert-err" id="err"></div>
+    <div class="alert alert-warn" id="warn"></div>
+    <form id="f">
+        <div class="fg"><label for="email">Work email</label><input type="email" id="email" placeholder="you@company.com" autocomplete="username" required></div>
+        <div class="fg"><label for="pw">Password</label><input type="password" id="pw" placeholder="Enter password" autocomplete="current-password" required></div>
+        <div class="row"><label><input type="checkbox" name="remember"> Keep me signed in</label><a href="/auth/reset">Forgot password?</a></div>
+        <button class="btn" type="submit" id="btn"><span id="bt">Sign in</span></button>
+    </form>
+    <div class="ft"><a href="/legal/privacy">Privacy</a><span class="sep">&middot;</span><a href="/legal/terms">Terms</a><span class="sep">&middot;</span><a href="/status">Status</a><span class="sep">&middot;</span>&copy; 2026 Meridian Systems</div>
+</div>
+</div>
+<div class="right"><div class="right-inner">
+    <h2>Infrastructure at a glance</h2>
+    <p>Monitor, manage and scale your infrastructure from a single control plane.</p>
+    <div class="feat"><svg viewBox="0 0 16 16"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm-.5 3h1v4.25l2.5 1.5-.5.87L7.5 8.75V4z"/></svg>Real-time metrics &amp; alerts</div>
+    <div class="feat"><svg viewBox="0 0 16 16"><path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"/></svg>Automated compliance checks</div>
+    <div class="feat"><svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zm.75 4.75v2.5h2.5v1.5h-2.5v2.5h-1.5v-2.5h-2.5v-1.5h2.5v-2.5h1.5z"/></svg>Multi-cloud orchestration</div>
+    <div class="feat"><svg viewBox="0 0 16 16"><path d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm5-3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V12H9v-1h.45c.67-.48 1.05-1.25 1.05-2v-.5C10.5 7.22 9.98 6 9 6z"/></svg>SSO &amp; RBAC built in</div>
+</div></div>
+<script>
+(function(){
+    var attempts=0,locked=false;
+    var f=document.getElementById('f'),btn=document.getElementById('btn'),bt=document.getElementById('bt');
+    var err=document.getElementById('err'),warn=document.getElementById('warn');
+    var email=document.getElementById('email'),pw=document.getElementById('pw');
+    f.addEventListener('submit',function(e){
+        e.preventDefault();
+        if(locked)return;
+        err.style.display='none';warn.style.display='none';
+        btn.disabled=true;bt.innerHTML='<div class="spinner"></div>';
+        fetch('/api/v1/auth/login',{
+            method:'POST',
+            headers:{'Content-Type':'application/json','X-Request-ID':crypto.randomUUID()},
+            body:JSON.stringify({email:email.value,password:pw.value,remember:f.remember.checked})
+        }).then(function(r){return r.json().then(function(d){return{status:r.status,data:d}})})
+        .then(function(r){
+            attempts++;pw.value='';
+            if(attempts>=5){
+                locked=true;
+                warn.textContent='Too many failed attempts. Please try again in 15 minutes or contact your administrator.';
+                warn.style.display='block';err.style.display='none';
+                setTimeout(function(){locked=false;attempts=0;warn.style.display='none'},900000);
+            }else if(attempts>=3){
+                err.innerHTML=r.data.message+'<br><small>'+attempts+'/5 attempts used. Account will be temporarily locked.</small>';
+                err.style.display='block';
+            }else{
+                err.textContent=r.data.message||'Authentication failed.';
+                err.style.display='block';
+            }
+        }).catch(function(){
+            err.textContent='Service unavailable. Please try again later.';
+            err.style.display='block';
+        }).finally(function(){btn.disabled=false;bt.textContent='Sign in'});
+    });
+})();
+</script>
+</body>
+</html>
