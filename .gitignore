@@ -92,3 +92,5 @@ x86/
 
 # Built Visual Studio Code Extensions
 *.vsix
+node_modules
+.claude
