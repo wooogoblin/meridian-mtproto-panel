@@ -175,15 +175,6 @@ if [[ "$USE_SELF_SIGNED" == true ]]; then
     fi
 fi
 
-# ─── Email для LE ───────────────────────────────────────────────────────────
-CERTBOT_EMAIL=""
-if [[ "$USE_SELF_SIGNED" == false ]]; then
-    if [[ -n "${LETSENCRYPT_EMAIL:-}" ]]; then
-        CERTBOT_EMAIL="$LETSENCRYPT_EMAIL"
-    elif [[ -e /dev/tty ]]; then
-        read -rp "  Email для Let's Encrypt (Enter = без email): " CERTBOT_EMAIL < /dev/tty 2>/dev/null || true
-    fi
-fi
 
 # ─── Генерация credentials ──────────────────────────────────────────────────
 info "Генерирую учётные данные администратора…"
@@ -343,6 +334,12 @@ if [[ "$CERT_VALID" == false ]]; then
         ok "Self-signed сертификат создан"
     else
         info "Получаю Let's Encrypt сертификат…"
+        CERTBOT_EMAIL=""
+        if [[ -n "${LETSENCRYPT_EMAIL:-}" ]]; then
+            CERTBOT_EMAIL="$LETSENCRYPT_EMAIL"
+        elif [[ -e /dev/tty ]]; then
+            read -rp "  Email для Let's Encrypt (Enter = без email): " CERTBOT_EMAIL < /dev/tty 2>/dev/null || true
+        fi
         EMAIL_FLAG="--register-unsafely-without-email"
         [[ -n "$CERTBOT_EMAIL" ]] && EMAIL_FLAG="--email ${CERTBOT_EMAIL}"
 
