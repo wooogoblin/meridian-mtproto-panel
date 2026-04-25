@@ -45,8 +45,10 @@ def _toml_entry_for(meta_user: dict, max_conn: int) -> dict:
     return {"key": _raw_key(meta_user["secret"]), "label": meta_user.get("label", "user"), "limit": max_conn}
 
 
-def _merge(meta: list[dict], env: dict) -> list[dict]:
+def _merge(meta: list[dict], env: dict, conn_stats: dict[str, int] | None = None) -> list[dict]:
     secret_map = {s["key"]: s for s in teleproxy_config.get_secrets(env)}
+    if conn_stats is None:
+        conn_stats = {}
     result = []
     for m in meta:
         env_entry = secret_map.get(_raw_key(m["secret"]), {})
@@ -55,7 +57,7 @@ def _merge(meta: list[dict], env: dict) -> list[dict]:
             "label":    m["label"],
             "secret":   m["secret"],
             "maxConn":  env_entry.get("limit", 15),
-            "conn":     0,
+            "conn":     conn_stats.get(m["label"], 0),
             "active":   m.get("active", True),
             "created":  m["created"],
             "lastSeen": m.get("lastSeen", "never"),
@@ -64,7 +66,26 @@ def _merge(meta: list[dict], env: dict) -> list[dict]:
 
 
 def list_users() -> list[dict]:
-    return _merge(_load_meta(), teleproxy_config.read_env())
+    meta = _load_meta()
+    env  = teleproxy_config.read_env()
+    conn_stats = teleproxy_config.fetch_conn_stats()
+    users = _merge(meta, env, conn_stats)
+
+    # Update lastSeen for users with active connections
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
+    meta_by_id = {m["id"]: m for m in meta}
+    changed = False
+    for u in users:
+        if u["conn"] > 0:
+            m = meta_by_id.get(u["id"])
+            if m and m.get("lastSeen") != now:
+                m["lastSeen"] = now
+                u["lastSeen"] = now
+                changed = True
+    if changed:
+        _save_meta(meta)
+
+    return users
 
 
 def create_user(label: str, max_conn: int) -> dict:

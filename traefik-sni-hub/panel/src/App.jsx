@@ -59,6 +59,7 @@ const IconShield  = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="
 const IconUsers   = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
 const IconLink    = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
 const IconLogout  = () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+const IconEdit    = () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
 
 // ─── useCopyFeedback ──────────────────────────────────────────────────────────
 function useCopyFeedback() {
@@ -268,11 +269,25 @@ function QRPlaceholder({ value }) {
 }
 
 // ─── UserDetail ───────────────────────────────────────────────────────────────
-function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onCopy, toggling }) {
-  const [showSecret, setShowSecret] = useState(false)
+function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onCopy, toggling, onUpdateMaxConn }) {
+  const [showSecret,   setShowSecret]   = useState(false)
+  const [editingConn,  setEditingConn]  = useState(false)
+  const [connInput,    setConnInput]    = useState(user.maxConn)
+  const [connBusy,     setConnBusy]     = useState(false)
   const link   = buildTgLink(user.secret, serverIp)
   const pct    = user.maxConn > 0 ? Math.round((user.conn / user.maxConn) * 100) : 0
   const barColor = pct > 80 ? 'var(--red)' : pct > 55 ? 'var(--yellow)' : 'var(--accent)'
+
+  async function saveMaxConn() {
+    const n = Math.max(1, Math.min(100, connInput || 1))
+    setConnBusy(true)
+    try {
+      await onUpdateMaxConn(user.id, n)
+      setEditingConn(false)
+    } finally {
+      setConnBusy(false)
+    }
+  }
 
   return (
     <div className="user-detail">
@@ -349,8 +364,28 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
       <div className="detail-section">
         <div className="detail-label" style={{ marginBottom: 8 }}>
           Connection limit
-          <span className="conn-fraction">{user.conn} / {user.maxConn}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="conn-fraction">{user.conn} / {user.maxConn}</span>
+            {!editingConn && (
+              <button className="icon-btn" style={{ width: 22, height: 22 }} title="Edit limit"
+                onClick={() => { setConnInput(user.maxConn); setEditingConn(true) }}>
+                <IconEdit />
+              </button>
+            )}
+          </div>
         </div>
+        {editingConn && (
+          <div className="conn-edit-row">
+            <input type="number" min="1" max="100" value={connInput} autoFocus
+                   className="conn-edit-input"
+                   onChange={e => setConnInput(Number(e.target.value))}
+                   onKeyDown={e => { if (e.key === 'Enter') saveMaxConn(); if (e.key === 'Escape') setEditingConn(false) }} />
+            <button className="btn btn-sm btn-primary" disabled={connBusy} onClick={saveMaxConn}>
+              {connBusy ? <span className="btn-spinner" /> : 'Save'}
+            </button>
+            <button className="btn btn-sm btn-ghost" disabled={connBusy} onClick={() => setEditingConn(false)}>Cancel</button>
+          </div>
+        )}
         <div className="progress-track">
           <div className="progress-fill" style={{ width: `${pct}%`, background: barColor }} />
         </div>
@@ -459,6 +494,15 @@ export default function App() {
     }
   }
 
+  async function handleUpdateMaxConn(id, maxConn) {
+    try {
+      const updated = await api.updateUser(id, { maxConn })
+      if (updated) setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))
+    } catch (err) {
+      showError(err.message)
+    }
+  }
+
   async function handleLogout() {
     await api.logout()
     window.location.href = '/'
@@ -514,6 +558,7 @@ export default function App() {
       <main className="main">
         {selectedUser
           ? <UserDetail
+              key={selectedUser.id}
               user={selectedUser}
               serverIp={config.serverIp}
               domain={config.domain}
@@ -522,6 +567,7 @@ export default function App() {
               copiedKey={copiedKey}
               onCopy={onCopy}
               toggling={toggling}
+              onUpdateMaxConn={handleUpdateMaxConn}
             />
           : <EmptyState />
         }

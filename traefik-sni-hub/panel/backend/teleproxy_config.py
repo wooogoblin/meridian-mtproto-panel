@@ -110,3 +110,28 @@ def reload_teleproxy() -> bool:
         return True
     except Exception:
         return False
+
+
+# ─── Live connection stats ────────────────────────────────────────────────────
+
+def fetch_conn_stats() -> dict[str, int]:
+    """Return {label: current_connections} from teleproxy Prometheus stats. Falls back to {}."""
+    import re
+    from urllib.request import urlopen
+    from urllib.error import URLError
+    try:
+        with urlopen("http://mtproto:8888/", timeout=2) as resp:
+            text = resp.read().decode()
+    except Exception:
+        return {}
+    result: dict[str, int] = {}
+    for line in text.splitlines():
+        if line.startswith('#') or not line.strip():
+            continue
+        if 'connections' not in line or 'total' in line or 'limit' in line:
+            continue
+        m = re.match(r'\S+\{[^}]*\blabel="([^"]+)"[^}]*\}\s+(\d+)', line)
+        if m:
+            label, count = m.group(1), int(m.group(2))
+            result[label] = result.get(label, 0) + count
+    return result
