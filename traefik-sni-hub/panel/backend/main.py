@@ -1,7 +1,9 @@
+import asyncio
 import json
 import os
 import time
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -13,7 +15,24 @@ import users as users_module
 
 CONFIG_PATH = Path(os.environ.get("DATA_DIR", "/data")) / "config.json"
 
-app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+async def _sync_users_delayed():
+    # Wait for teleproxy to start and regenerate config.toml from env vars,
+    # then re-apply any panel users that aren't in the freshly generated TOML.
+    await asyncio.sleep(15)
+    try:
+        users_module.sync_all_to_toml()
+    except Exception:
+        pass
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    asyncio.create_task(_sync_users_delayed())
+    yield
+
+
+app = FastAPI(lifespan=_lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 
 # ─── Config ───────────────────────────────────────────────────────────────────

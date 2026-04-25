@@ -145,6 +145,12 @@ source "${MTPROTO_DIR}/.env"
 DECOY_DOMAIN=$(echo "${EE_DOMAIN}" | sed 's/:.*$//')
 ok "Домен: ${BOLD}${DECOY_DOMAIN}${NC}"
 
+# RAW_KEY = plain 32-char hex; EE_SECRET = ee<hex><domain_hex> для tg:// ссылок
+RAW_KEY="$SECRET"
+DOMAIN_HEX=$(printf '%s' "$DECOY_DOMAIN" | xxd -p | tr -d '\n')
+EE_SECRET="ee${RAW_KEY}${DOMAIN_HEX}"
+ok "Секрет: ${BOLD}${RAW_KEY:0:8}…${NC}"
+
 # ─── Проверяем DNS ──────────────────────────────────────────────────────────
 info "Проверяю DNS для ${DECOY_DOMAIN}…"
 RESOLVED_IP=$(dig +short "$DECOY_DOMAIN" 2>/dev/null | grep -E '^[0-9]+\.' | tail -1 || true)
@@ -206,60 +212,16 @@ json.dump(cfg, open('${DATA_DIR}/config.json', 'w'), indent=2)
 chmod 600 "${DATA_DIR}/config.json"
 ok "config.json создан"
 
-# ─── Конвертируем MTProto env → TOML ────────────────────────────────────────
-# Teleproxy читает config.toml из /opt/teleproxy/data/ внутри контейнера.
-# Мы монтируем ./data/ как volume, поэтому пишем на хост в ${MTPROTO_DIR}/data/config.toml.
+# ─── Инициализируем users.json (если не существует) ─────────────────────────
+# Teleproxy генерирует config.toml сам из env-переменных при каждом старте.
+# Мы только инициализируем метаданные пользователей для панели.
+# data/ создаём заранее, чтобы Docker не смонтировал config.toml как директорию.
 mkdir -p "${MTPROTO_DIR}/data"
-TOML_PATH="${MTPROTO_DIR}/data/config.toml"
-if [[ ! -f "$TOML_PATH" ]]; then
-    info "Конвертирую MTProto секрет в TOML…"
-
-    # Пытаемся прочитать актуальный ключ из работающего контейнера.
-    # Entrypoint мог сгенерировать собственный секрет (если SECRET env не был передан),
-    # тогда он отличается от того, что лежит в .env.
-    EXISTING_KEY=$(docker exec mtproto sh -c \
-        "grep -oP '(?<=key = \")[^\"]+' /opt/teleproxy/data/config.toml 2>/dev/null | head -1" 2>/dev/null || true)
-
-    if [[ -n "$EXISTING_KEY" ]]; then
-        RAW_KEY="$EXISTING_KEY"
-        ok "Подхватил существующий ключ из контейнера (${RAW_KEY:0:8}…)"
-    else
-        # Fallback: берём SECRET из .env
-        RAW_KEY="$SECRET"
-        warn "Не удалось прочитать ключ из контейнера, использую SECRET из .env"
-    fi
-
-    DOMAIN_HEX=$(printf '%s' "$DECOY_DOMAIN" | xxd -p | tr -d '\n')
-    # Для tg:// ссылок нужен ee-encoded секрет
-    EE_SECRET="ee${RAW_KEY}${DOMAIN_HEX}"
-
+[[ -f "${MTPROTO_DIR}/data/config.toml" ]] || touch "${MTPROTO_DIR}/data/config.toml"
+USERS_JSON="${DATA_DIR}/users.json"
+if [[ ! -f "$USERS_JSON" ]]; then
+    info "Инициализирую users.json с дефолтным пользователем…"
     "$VENV_PY" -c "
-import toml
-data = {
-    'port': int('${PROXY_PORT:-2443}'),
-    'stats_port': 8888,
-    'http_stats': True,
-    'workers': 1,
-    'maxconn': 10000,
-    'user': 'teleproxy',
-    'domain': '${DECOY_DOMAIN}:8443',
-    'secret': [
-        {
-            'key': '${RAW_KEY}',
-            'label': 'default',
-            'limit': 15,
-        }
-    ],
-}
-with open('${TOML_PATH}', 'w') as f:
-    toml.dump(data, f)
-" || fail "Не удалось сгенерировать config.toml"
-    ok "data/config.toml создан"
-
-    # Инициализируем users.json с мигрированным пользователем
-    USERS_JSON="${DATA_DIR}/users.json"
-    if [[ ! -f "$USERS_JSON" ]]; then
-        "$VENV_PY" -c "
 import json
 from datetime import datetime, timezone
 users = [{
@@ -272,16 +234,14 @@ users = [{
 }]
 json.dump(users, open('${USERS_JSON}', 'w'), indent=2)
 " || warn "Не удалось создать users.json"
-        ok "users.json инициализирован"
-    fi
+    ok "users.json инициализирован"
 else
-    ok "data/config.toml уже существует"
+    ok "users.json уже существует"
 fi
 
-# ─── Обновляем MTProto docker-compose для работы с TOML ────────────────────
-# ./data монтируется в /opt/teleproxy/data — именно там entrypoint ищет config.toml.
-# Если config.toml уже существует при старте, entrypoint его использует (не генерирует новый).
-# domain fronting настраивается через поле domain в config.toml, env-переменная не нужна.
+# ─── Обновляем MTProto docker-compose ───────────────────────────────────────
+# SECRET и EE_DOMAIN передаём через env: start.sh генерирует config.toml из них при каждом
+# старте контейнера. data/ монтируется для персистентности proxy-multi.conf и SIGHUP-reload.
 cat > "${MTPROTO_DIR}/docker-compose.yml" <<DEOF
 services:
   mtproto:
@@ -291,6 +251,8 @@ services:
     environment:
       - PORT=${PROXY_PORT:-2443}
       - STATS_PORT=8888
+      - SECRET=${RAW_KEY}
+      - EE_DOMAIN=${DECOY_DOMAIN}:8443
     volumes:
       - ./data:/opt/teleproxy/data
     expose:
@@ -311,7 +273,7 @@ networks:
   proxy:
     external: true
 DEOF
-ok "MTProto docker-compose обновлён для TOML"
+ok "MTProto docker-compose обновлён"
 
 # ─── Скачиваем backend ──────────────────────────────────────────────────────
 info "Скачиваю backend…"

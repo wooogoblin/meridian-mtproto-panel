@@ -150,3 +150,25 @@ def delete_user(user_id: int) -> bool:
     teleproxy_config.write_toml(toml_data)
     teleproxy_config.reload_teleproxy()
     return True
+
+
+def sync_all_to_toml() -> None:
+    """Re-apply active users from users.json to config.toml after teleproxy restart.
+
+    On each start, teleproxy regenerates config.toml from env vars (only the original
+    SECRET). This function adds any additional panel users that aren't in the TOML yet.
+    """
+    meta = _load_meta()
+    toml_data = teleproxy_config.read_toml()
+    existing_keys = {s.get("key") for s in teleproxy_config.get_secrets(toml_data)}
+    changed = False
+    for m in meta:
+        if not m.get("active", True):
+            continue
+        raw_key = _raw_key(m["secret"])
+        if raw_key not in existing_keys:
+            teleproxy_config.add_secret(toml_data, _toml_entry_for(m, 15))
+            changed = True
+    if changed:
+        teleproxy_config.write_toml(toml_data)
+        teleproxy_config.reload_teleproxy()
