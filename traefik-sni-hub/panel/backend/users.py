@@ -34,20 +34,28 @@ def _build_full_secret(raw: str) -> str:
     return f"ee{raw}{_domain_hex()}"
 
 
+def _raw_key(full_secret: str) -> str:
+    """Extract plain 32-char hex from ee<32hex><domain_hex>.
+    Teleproxy stores secrets as plain hex; ee-encoding is handled via EE_DOMAIN env."""
+    if full_secret.startswith("ee") and len(full_secret) >= 34:
+        return full_secret[2:34]
+    return full_secret
+
+
 def _toml_entry_for(meta_user: dict, max_conn: int) -> dict:
-    return {"secret": meta_user["secret"], "max_connections": max_conn}
+    return {"key": _raw_key(meta_user["secret"]), "label": meta_user.get("label", "user"), "limit": max_conn}
 
 
 def _merge(meta: list[dict], toml_data: dict) -> list[dict]:
-    secret_map = {s["secret"]: s for s in teleproxy_config.get_secrets(toml_data)}
+    secret_map = {s["key"]: s for s in teleproxy_config.get_secrets(toml_data)}
     result = []
     for m in meta:
-        toml_entry = secret_map.get(m["secret"], {})
+        toml_entry = secret_map.get(_raw_key(m["secret"]), {})
         result.append({
             "id": m["id"],
             "label": m["label"],
             "secret": m["secret"],
-            "maxConn": toml_entry.get("max_connections", 0),
+            "maxConn": toml_entry.get("limit", 0),
             "conn": 0,
             "active": m.get("active", True),
             "created": m["created"],
@@ -96,21 +104,21 @@ def update_user(user_id: int, active: Optional[bool] = None, max_conn: Optional[
 
     # Resolve current maxConn before potentially modifying TOML
     current_max = next(
-        (s.get("max_connections", 15) for s in teleproxy_config.get_secrets(toml_data) if s.get("secret") == entry["secret"]),
+        (s.get("limit", 15) for s in teleproxy_config.get_secrets(toml_data) if s.get("key") == _raw_key(entry["secret"])),
         max_conn or 15,
     )
 
     if active is not None:
         entry["active"] = active
         if not active:
-            teleproxy_config.remove_secret(toml_data, entry["secret"])
+            teleproxy_config.remove_secret(toml_data, _raw_key(entry["secret"]))
         else:
-            existing = any(s.get("secret") == entry["secret"] for s in teleproxy_config.get_secrets(toml_data))
+            existing = any(s.get("key") == _raw_key(entry["secret"]) for s in teleproxy_config.get_secrets(toml_data))
             if not existing:
                 teleproxy_config.add_secret(toml_data, _toml_entry_for(entry, max_conn or current_max))
 
     if max_conn is not None:
-        teleproxy_config.update_secret_limit(toml_data, entry["secret"], max_conn)
+        teleproxy_config.update_secret_limit(toml_data, _raw_key(entry["secret"]), max_conn)
         current_max = max_conn
 
     _save_meta(meta)
@@ -138,7 +146,7 @@ def delete_user(user_id: int) -> bool:
         return False
 
     _save_meta([m for m in meta if m["id"] != user_id])
-    teleproxy_config.remove_secret(toml_data, entry["secret"])
+    teleproxy_config.remove_secret(toml_data, _raw_key(entry["secret"]))
     teleproxy_config.write_toml(toml_data)
     teleproxy_config.reload_teleproxy()
     return True

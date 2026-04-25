@@ -190,7 +190,8 @@ JWT_SECRET=$(openssl rand -hex 32)
 ok "Credentials сгенерированы"
 
 # ─── Структура ──────────────────────────────────────────────────────────────
-mkdir -p "${SERVICE_DIR}/html/panel" "${SERVICE_DIR}/certs" "${SERVICE_DIR}/backend" "${DATA_DIR}"
+CERTS_DIR="${INSTALL_DIR}/certs"
+mkdir -p "${SERVICE_DIR}/html/panel" "${SERVICE_DIR}/backend" "${DATA_DIR}" "${CERTS_DIR}"
 
 # ─── Сохраняем config.json ──────────────────────────────────────────────────
 "$VENV_PY" -c "
@@ -206,37 +207,81 @@ chmod 600 "${DATA_DIR}/config.json"
 ok "config.json создан"
 
 # ─── Конвертируем MTProto env → TOML ────────────────────────────────────────
-TOML_PATH="${MTPROTO_DIR}/teleproxy.toml"
+# Teleproxy читает config.toml из /opt/teleproxy/data/ внутри контейнера.
+# Мы монтируем ./data/ как volume, поэтому пишем на хост в ${MTPROTO_DIR}/data/config.toml.
+mkdir -p "${MTPROTO_DIR}/data"
+TOML_PATH="${MTPROTO_DIR}/data/config.toml"
 if [[ ! -f "$TOML_PATH" ]]; then
     info "Конвертирую MTProto секрет в TOML…"
+
+    # Пытаемся прочитать актуальный ключ из работающего контейнера.
+    # Entrypoint мог сгенерировать собственный секрет (если SECRET env не был передан),
+    # тогда он отличается от того, что лежит в .env.
+    EXISTING_KEY=$(docker exec mtproto sh -c \
+        "grep -oP '(?<=key = \")[^\"]+' data/config.toml 2>/dev/null | head -1" 2>/dev/null || true)
+
+    if [[ -n "$EXISTING_KEY" ]]; then
+        RAW_KEY="$EXISTING_KEY"
+        ok "Подхватил существующий ключ из контейнера (${RAW_KEY:0:8}…)"
+    else
+        # Fallback: берём SECRET из .env
+        RAW_KEY="$SECRET"
+        warn "Не удалось прочитать ключ из контейнера, использую SECRET из .env"
+    fi
+
     DOMAIN_HEX=$(printf '%s' "$DECOY_DOMAIN" | xxd -p | tr -d '\n')
-    FULL_SECRET="ee${SECRET}${DOMAIN_HEX}"
-    EE_DOMAIN_FOR_TOML="${DECOY_DOMAIN}:8443"
+    # Для tg:// ссылок нужен ee-encoded секрет
+    EE_SECRET="ee${RAW_KEY}${DOMAIN_HEX}"
 
     "$VENV_PY" -c "
 import toml
 data = {
-    'server': {
-        'port': int('${PROXY_PORT:-2443}'),
-        'stats_port': 8888,
-        'ee_domain': '${EE_DOMAIN_FOR_TOML}',
-    },
+    'port': int('${PROXY_PORT:-2443}'),
+    'stats_port': 8888,
+    'http_stats': True,
+    'workers': 1,
+    'maxconn': 10000,
+    'user': 'teleproxy',
+    'domain': '${DECOY_DOMAIN}:8443',
     'secret': [
         {
-            'secret': '${FULL_SECRET}',
-            'max_connections': 15,
+            'key': '${RAW_KEY}',
+            'label': 'default',
+            'limit': 15,
         }
     ],
 }
 with open('${TOML_PATH}', 'w') as f:
     toml.dump(data, f)
-" || fail "Не удалось сгенерировать teleproxy.toml"
-    ok "teleproxy.toml создан"
+" || fail "Не удалось сгенерировать config.toml"
+    ok "data/config.toml создан"
+
+    # Инициализируем users.json с мигрированным пользователем
+    USERS_JSON="${DATA_DIR}/users.json"
+    if [[ ! -f "$USERS_JSON" ]]; then
+        "$VENV_PY" -c "
+import json
+from datetime import datetime, timezone
+users = [{
+    'id': 1,
+    'label': 'default',
+    'secret': '${EE_SECRET}',
+    'active': True,
+    'created': datetime.now(timezone.utc).strftime('%Y-%m-%d'),
+    'lastSeen': 'never',
+}]
+json.dump(users, open('${USERS_JSON}', 'w'), indent=2)
+" || warn "Не удалось создать users.json"
+        ok "users.json инициализирован"
+    fi
 else
-    ok "teleproxy.toml уже существует"
+    ok "data/config.toml уже существует"
 fi
 
 # ─── Обновляем MTProto docker-compose для работы с TOML ────────────────────
+# ./data монтируется в /opt/teleproxy/data — именно там entrypoint ищет config.toml.
+# Если config.toml уже существует при старте, entrypoint его использует (не генерирует новый).
+# domain fronting настраивается через поле domain в config.toml, env-переменная не нужна.
 cat > "${MTPROTO_DIR}/docker-compose.yml" <<DEOF
 services:
   mtproto:
@@ -247,7 +292,7 @@ services:
       - PORT=${PROXY_PORT:-2443}
       - STATS_PORT=8888
     volumes:
-      - ./teleproxy.toml:/etc/teleproxy/config.toml:ro
+      - ./data:/opt/teleproxy/data
     expose:
       - "${PROXY_PORT:-2443}"
     networks:
@@ -309,44 +354,66 @@ done <<< "$ASSET_FILES"
 ok "Фронтенд скачан ($(echo "$ASSET_FILES" | wc -l) файла)"
 
 # ─── Сертификат ─────────────────────────────────────────────────────────────
-if [[ "$USE_SELF_SIGNED" == true ]]; then
-    info "Генерирую self-signed сертификат…"
-    openssl req -x509 -nodes -days 3650 \
-        -newkey rsa:2048 \
-        -keyout "${SERVICE_DIR}/certs/privkey.pem" \
-        -out "${SERVICE_DIR}/certs/fullchain.pem" \
-        -subj "/CN=${DECOY_DOMAIN}" 2>/dev/null
-    ok "Self-signed сертификат создан"
-else
-    info "Получаю Let's Encrypt сертификат…"
-    EMAIL_FLAG="--register-unsafely-without-email"
-    [[ -n "$CERTBOT_EMAIL" ]] && EMAIL_FLAG="--email ${CERTBOT_EMAIL}"
+CERT_FILE="${CERTS_DIR}/fullchain.pem"
+KEY_FILE="${CERTS_DIR}/privkey.pem"
 
-    if docker run --rm \
-        -p 80:80 \
-        -v "${SERVICE_DIR}/certs:/etc/letsencrypt" \
-        certbot/certbot certonly \
-            --standalone --agree-tos --no-eff-email \
-            ${EMAIL_FLAG} -d "${DECOY_DOMAIN}"; then
-
-        ln -sf "live/${DECOY_DOMAIN}/fullchain.pem" "${SERVICE_DIR}/certs/fullchain.pem"
-        ln -sf "live/${DECOY_DOMAIN}/privkey.pem" "${SERVICE_DIR}/certs/privkey.pem"
-        ok "Let's Encrypt сертификат получен"
-
-        CRON_CMD="0 3 * * 0 docker run --rm -p 80:80 -v ${SERVICE_DIR}/certs:/etc/letsencrypt certbot/certbot renew --standalone && cd ${SERVICE_DIR} && docker compose restart decoy"
-        EXISTING_CRON=$(crontab -l 2>/dev/null | grep -v "certbot renew" || true)
-        { [[ -n "$EXISTING_CRON" ]] && printf '%s\n' "$EXISTING_CRON"; printf '%s\n' "$CRON_CMD"; } | crontab -
-        ok "Cron для обновления сертификата добавлен"
+# Проверяем существующий сертификат: есть ли файл и не истекает ли он в ближайшие 30 дней
+CERT_VALID=false
+if [[ -f "$CERT_FILE" && -f "$KEY_FILE" ]]; then
+    if openssl x509 -checkend 2592000 -noout -in "$CERT_FILE" 2>/dev/null; then
+        CERT_VALID=true
+        CERT_SUBJECT=$(openssl x509 -noout -subject -in "$CERT_FILE" 2>/dev/null | sed 's/.*CN=//' | tr -d ' ')
+        CERT_EXPIRY=$(openssl x509 -noout -enddate -in "$CERT_FILE" 2>/dev/null | cut -d= -f2)
+        ok "Сертификат уже существует (CN=${CERT_SUBJECT}, до ${CERT_EXPIRY}) — пропускаю certbot"
     else
-        warn "Let's Encrypt не удался, генерирую self-signed…"
+        warn "Сертификат истекает менее чем через 30 дней — обновляю"
+    fi
+fi
+
+if [[ "$CERT_VALID" == false ]]; then
+    if [[ "$USE_SELF_SIGNED" == true ]]; then
+        info "Генерирую self-signed сертификат…"
         openssl req -x509 -nodes -days 3650 \
             -newkey rsa:2048 \
-            -keyout "${SERVICE_DIR}/certs/privkey.pem" \
-            -out "${SERVICE_DIR}/certs/fullchain.pem" \
+            -keyout "$KEY_FILE" \
+            -out "$CERT_FILE" \
             -subj "/CN=${DECOY_DOMAIN}" 2>/dev/null
-        ok "Self-signed сертификат создан (fallback)"
-        USE_SELF_SIGNED=true
+        ok "Self-signed сертификат создан"
+    else
+        info "Получаю Let's Encrypt сертификат…"
+        EMAIL_FLAG="--register-unsafely-without-email"
+        [[ -n "$CERTBOT_EMAIL" ]] && EMAIL_FLAG="--email ${CERTBOT_EMAIL}"
+
+        if docker run --rm \
+            -p 80:80 \
+            -v "${CERTS_DIR}:/etc/letsencrypt" \
+            certbot/certbot certonly \
+                --standalone --agree-tos --no-eff-email \
+                ${EMAIL_FLAG} -d "${DECOY_DOMAIN}"; then
+
+            ln -sf "live/${DECOY_DOMAIN}/fullchain.pem" "$CERT_FILE"
+            ln -sf "live/${DECOY_DOMAIN}/privkey.pem" "$KEY_FILE"
+            ok "Let's Encrypt сертификат получен"
+        else
+            warn "Let's Encrypt не удался, генерирую self-signed…"
+            openssl req -x509 -nodes -days 3650 \
+                -newkey rsa:2048 \
+                -keyout "$KEY_FILE" \
+                -out "$CERT_FILE" \
+                -subj "/CN=${DECOY_DOMAIN}" 2>/dev/null
+            ok "Self-signed сертификат создан (fallback)"
+            USE_SELF_SIGNED=true
+        fi
     fi
+fi
+
+# ─── Cron для автопродления LE-сертификата ──────────────────────────────────
+# Устанавливается всегда при наличии LE-сертификата (в т.ч. при переустановке).
+if [[ "$USE_SELF_SIGNED" == false ]]; then
+    CRON_CMD="0 3 * * 0 docker run --rm -p 80:80 -v ${CERTS_DIR}:/etc/letsencrypt certbot/certbot renew --standalone && docker compose -f ${SERVICE_DIR}/docker-compose.yml restart decoy"
+    EXISTING_CRON=$(crontab -l 2>/dev/null | grep -v "certbot renew" || true)
+    { [[ -n "$EXISTING_CRON" ]] && printf '%s\n' "$EXISTING_CRON"; printf '%s\n' "$CRON_CMD"; } | crontab -
+    ok "Cron для обновления сертификата установлен"
 fi
 
 # ─── Скачиваем nginx.conf ───────────────────────────────────────────────────
@@ -360,8 +427,8 @@ cat > "${SERVICE_DIR}/.env" <<EOF
 DECOY_DOMAIN=${DECOY_DOMAIN}
 EE_DOMAIN_RAW=${DECOY_DOMAIN}
 SERVER_IP=${SERVER_IP}
-DATA_DIR=${DATA_DIR}
-TOML_PATH=${MTPROTO_DIR}/teleproxy.toml
+DATA_DIR=/data
+TOML_PATH=/teleproxy/config.toml
 EOF
 
 # ─── docker-compose.yml ─────────────────────────────────────────────────────
@@ -374,7 +441,7 @@ services:
     volumes:
       - ./html:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./certs:/etc/nginx/certs:ro
+      - ${CERTS_DIR}:/etc/nginx/certs:ro
     expose:
       - "8443"
     networks:
@@ -394,7 +461,7 @@ services:
     env_file: .env
     volumes:
       - ${DATA_DIR}:/data
-      - ${MTPROTO_DIR}/teleproxy.toml:/teleproxy/teleproxy.toml
+      - ${MTPROTO_DIR}/data/config.toml:/teleproxy/config.toml
       - /var/run/docker.sock:/var/run/docker.sock
     expose:
       - "8000"

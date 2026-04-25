@@ -55,9 +55,9 @@ if [[ -f "${INSTALL_DIR}/traefik/dynamic/decoy.yml" ]]; then
 fi
 
 # ─── Удаляем cron для certbot renew ─────────────────────────────────────────
-if crontab -l 2>/dev/null | grep -q "${SERVICE_DIR}/certs"; then
+if crontab -l 2>/dev/null | grep -q "certbot renew"; then
     info "Удаляю cron для обновления сертификата…"
-    crontab -l 2>/dev/null | grep -v "${SERVICE_DIR}/certs" | crontab - || true
+    crontab -l 2>/dev/null | grep -v "certbot renew" | crontab - || true
     ok "Cron удалён"
 fi
 
@@ -75,10 +75,16 @@ fi
 ok "Панель удалена"
 
 # ─── Предупреждение про MTProto в TOML-режиме ───────────────────────────────
-if [[ -f "${INSTALL_DIR}/services/mtproto/teleproxy.toml" ]]; then
+if [[ -f "${INSTALL_DIR}/services/mtproto/data/config.toml" ]]; then
     echo ""
-    warn "MTProto остался в TOML-режиме (${INSTALL_DIR}/services/mtproto/teleproxy.toml)."
+    warn "MTProto остался в TOML-режиме (${INSTALL_DIR}/services/mtproto/data/config.toml)."
     warn "Без панели управлять пользователями придётся вручную через TOML + SIGHUP."
+    echo ""
+fi
+
+if [[ -d "${INSTALL_DIR}/certs" ]]; then
+    echo ""
+    ok "Сертификат сохранён в ${INSTALL_DIR}/certs/ — при переустановке панели будет использован повторно."
     echo ""
 fi
 

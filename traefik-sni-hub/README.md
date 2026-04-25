@@ -130,7 +130,7 @@ traefik-sni-hub/
 │       └── teleproxy_config.py
 ├── install.sh                  # Traefik
 ├── install-mtproto.sh          # MTProto (Teleproxy)
-├── install-panel.sh            # Панель управления
+├── install-panel.sh            # Панель управления (включает decoy-nginx)
 ├── uninstall-mtproto.sh
 ├── uninstall-panel.sh
 ├── uninstall.sh
@@ -142,6 +142,9 @@ traefik-sni-hub/
 ```
 /opt/mtproto-proxy/
 ├── docker-compose.yml              # Traefik
+├── certs/                          # TLS-сертификат (Let's Encrypt или self-signed)
+│   ├── fullchain.pem
+│   └── privkey.pem
 ├── traefik/
 │   ├── static.yml                  # Точка входа :443
 │   └── dynamic/
@@ -150,13 +153,13 @@ traefik-sni-hub/
 └── services/
     ├── mtproto/
     │   ├── docker-compose.yml      # Контейнер Teleproxy
-    │   ├── .env                    # PROXY_PORT (после миграции на TOML)
-    │   └── teleproxy.toml          # Секреты пользователей (после install-panel.sh)
+    │   ├── .env                    # PROXY_PORT, EE_DOMAIN (до install-panel.sh)
+    │   └── data/
+    │       └── config.toml         # Секреты пользователей (после install-panel.sh)
     └── panel/
         ├── docker-compose.yml      # decoy (nginx) + meridian-backend (FastAPI)
         ├── nginx.conf
         ├── .env                    # SERVER_IP, EE_DOMAIN_RAW, DATA_DIR, TOML_PATH
-        ├── certs/                  # TLS-сертификат
         ├── html/
         │   ├── index.html          # Страница входа
         │   └── panel/              # React SPA

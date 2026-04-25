@@ -80,6 +80,11 @@ if [[ -f "${SERVICE_DIR}/docker-compose.yml" ]]; then
         source "${SERVICE_DIR}/.env"
         echo -e "  Текущий домен: ${EE_DOMAIN:-не задан}"
     fi
+    # Если панель уже переключила MTProto на TOML — предупреждаем
+    if [[ -f "${SERVICE_DIR}/data/config.toml" ]]; then
+        echo -e "  ${YELLOW}⚠  Панель установлена и MTProto работает в TOML-режиме.${NC}"
+        echo -e "  ${YELLOW}   После переустановки MTProto запусти install-panel.sh повторно.${NC}"
+    fi
     if read -rp "Переустановить? [y/N] " ans < /dev/tty 2>/dev/null; then
         [[ "$ans" =~ ^[Yy]$ ]] || { echo "Отменено."; exit 0; }
         cd "$SERVICE_DIR" && docker compose down 2>/dev/null || true

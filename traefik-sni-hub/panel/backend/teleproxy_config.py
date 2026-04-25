@@ -1,11 +1,10 @@
 import os
 from pathlib import Path
-from typing import Optional
 
 import docker
 import toml
 
-TOML_PATH = Path(os.environ.get("TOML_PATH", "/teleproxy/teleproxy.toml"))
+TOML_PATH = Path(os.environ.get("TOML_PATH", "/teleproxy/config.toml"))
 CONTAINER_NAME = "mtproto"
 
 
@@ -40,13 +39,13 @@ def add_secret(data: dict, entry: dict) -> None:
 
 def remove_secret(data: dict, secret_value: str) -> bool:
     before = len(data.get("secret", []))
-    data["secret"] = [s for s in data.get("secret", []) if s.get("secret") != secret_value]
+    data["secret"] = [s for s in data.get("secret", []) if s.get("key") != secret_value]
     return len(data["secret"]) < before
 
 
 def update_secret_limit(data: dict, secret_value: str, max_connections: int) -> bool:
     for s in data.get("secret", []):
-        if s.get("secret") == secret_value:
-            s["max_connections"] = max_connections
+        if s.get("key") == secret_value:
+            s["limit"] = max_connections
             return True
     return False
