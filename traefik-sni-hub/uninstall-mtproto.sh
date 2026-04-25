@@ -24,7 +24,7 @@ cd "$SERVICE_DIR"
 docker compose down -v --remove-orphans 2>/dev/null || true
 
 info "Удаляю образ…"
-docker rmi ghcr.io/teleproxy/teleproxy:latest 2>/dev/null || true
+docker rmi nineseconds/mtg:2 2>/dev/null || true
 
 info "Удаляю конфиги…"
 rm -f "${INSTALL_DIR}/traefik/dynamic/mtproto.yml"

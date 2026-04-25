@@ -48,18 +48,6 @@ docker compose down -v --remove-orphans 2>/dev/null || true
 info "Удаляю Docker-сеть proxy…"
 docker network rm proxy 2>/dev/null || true
 
-# Удаляем данные панели
-if [[ -d "/opt/meridian" ]]; then
-    info "Удаляю данные панели (/opt/meridian)…"
-    rm -rf /opt/meridian
-fi
-
-# Удаляем cron-задачи certbot для панели
-if crontab -l 2>/dev/null | grep -q "${INSTALL_DIR}"; then
-    info "Удаляю cron-задачи…"
-    crontab -l 2>/dev/null | grep -v "${INSTALL_DIR}" | crontab - || true
-fi
-
 # Удаляю каталог
 info "Удаляю ${INSTALL_DIR}…"
 cd /

@@ -91,17 +91,17 @@ fi
 # ─── Выбор домена маскировки ────────────────────────────────────────
 select_sni
 
-# ─── Проверяем панель (для domain fronting) ─────────────────────────
-PANEL_DIR="${INSTALL_DIR}/services/panel"
+# ─── Проверяем decoy ────────────────────────────────────────────────
+DECOY_DIR="${INSTALL_DIR}/services/decoy"
 EE_DOMAIN_VALUE="${FAKE_TLS_DOMAIN}"
 
-if [[ -f "${PANEL_DIR}/.env" ]]; then
-    PANEL_DOMAIN=$(grep DECOY_DOMAIN "${PANEL_DIR}/.env" | cut -d= -f2)
-    if [[ "$PANEL_DOMAIN" == "$FAKE_TLS_DOMAIN" ]]; then
+if [[ -f "${DECOY_DIR}/.env" ]]; then
+    DECOY_DOMAIN=$(grep DECOY_DOMAIN "${DECOY_DIR}/.env" | cut -d= -f2)
+    if [[ "$DECOY_DOMAIN" == "$FAKE_TLS_DOMAIN" ]]; then
         EE_DOMAIN_VALUE="${FAKE_TLS_DOMAIN}:8443"
-        ok "Панель найдена (${PANEL_DOMAIN}) → domain fronting на локальный nginx"
+        ok "Decoy найден (${DECOY_DOMAIN}) → domain fronting на локальный nginx"
     else
-        echo -e "  ${YELLOW}⚠  Панель установлена для ${PANEL_DOMAIN}, а SNI = ${FAKE_TLS_DOMAIN}${NC}"
+        echo -e "  ${YELLOW}⚠  Decoy установлен для ${DECOY_DOMAIN}, а SNI = ${FAKE_TLS_DOMAIN}${NC}"
         echo -e "  Domain fronting пойдёт на внешний ${FAKE_TLS_DOMAIN}"
     fi
 fi
@@ -237,11 +237,9 @@ echo -e "    ✔ ServerHello фрагментация"
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
-echo "  Следующий шаг — панель управления:"
-echo "    curl -sSL ${REPO_BASE:-https://raw.githubusercontent.com/SergeyNakhankov/vpntools/master/traefik-sni-hub}/install-panel.sh | sudo bash"
-echo ""
 echo "  Управление:"
 echo "    cd ${SERVICE_DIR}"
 echo "    docker compose logs -f       # логи"
 echo "    docker compose restart       # перезапуск"
+echo "    docker logs mtproto          # ссылки подключения"
 echo ""
