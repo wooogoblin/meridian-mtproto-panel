@@ -218,7 +218,7 @@ if [[ ! -f "$TOML_PATH" ]]; then
     # Entrypoint мог сгенерировать собственный секрет (если SECRET env не был передан),
     # тогда он отличается от того, что лежит в .env.
     EXISTING_KEY=$(docker exec mtproto sh -c \
-        "grep -oP '(?<=key = \")[^\"]+' data/config.toml 2>/dev/null | head -1" 2>/dev/null || true)
+        "grep -oP '(?<=key = \")[^\"]+' /opt/teleproxy/data/config.toml 2>/dev/null | head -1" 2>/dev/null || true)
 
     if [[ -n "$EXISTING_KEY" ]]; then
         RAW_KEY="$EXISTING_KEY"
