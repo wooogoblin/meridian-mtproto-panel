@@ -30,20 +30,25 @@ install_system_deps() {
 
     apt-get update -y >/dev/null 2>&1 || fail "apt-get update не удался"
 
+    # Минимум — без компилятора. build-tools поставим только если wheel не найдётся.
     apt-get install -y \
         python3 \
         python3-pip \
         python3-venv \
-        python3-dev \
-        build-essential \
         curl \
         dnsutils \
         openssl \
-        ca-certificates \
         xxd \
         || fail "Не удалось установить системные пакеты"
 
     ok "Системные зависимости готовы"
+}
+
+install_build_tools() {
+    info "Устанавливаю инструменты сборки (нужен компилятор для wheel-less пакета)…"
+    apt-get install -y python3-dev build-essential \
+        || fail "Не удалось установить build-essential/python3-dev"
+    ok "Build-tools установлены"
 }
 
 setup_venv() {
@@ -59,14 +64,23 @@ setup_venv() {
     ok "venv готов: ${VENV_DIR}"
 }
 
+# Ставит Python пакет: сначала только-wheel (быстро, без компилятора),
+# при отсутствии wheel дотягивает build-tools и собирает из исходников.
 install_py_pkg() {
     local pkg="$1"
     "$VENV_PY" -c "import ${pkg}" 2>/dev/null && return 0
 
-    info "Устанавливаю Python пакет: ${pkg}"
+    info "Устанавливаю Python пакет: ${pkg} (wheel-only)"
+    if "$VENV_PY" -m pip install ${PIP_OPTS} --only-binary=:all: "${pkg}"; then
+        ok "${pkg} установлен (wheel)"
+        return 0
+    fi
+
+    warn "Wheel для ${pkg} не найден — собираю из исходников"
+    install_build_tools
     "$VENV_PY" -m pip install ${PIP_OPTS} "${pkg}" \
-        || fail "Не удалось установить ${pkg} в venv"
-    ok "${pkg} установлен"
+        || fail "Не удалось установить ${pkg}"
+    ok "${pkg} установлен (compiled)"
 }
 
 # ─── --reset-password ───────────────────────────────────────────────────────
@@ -75,8 +89,8 @@ if [[ "${1:-}" == "--reset-password" ]]; then
     [[ -f "${DATA_DIR}/config.json" ]] || fail "Панель не установлена. Сначала запусти install-panel.sh"
     [[ -x "$VENV_PY" ]] || fail "Python venv не найден (${VENV_DIR}). Переустанови панель."
 
-    NEW_USER=$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 8)
-    NEW_PASS=$(LC_ALL=C tr -dc 'A-Za-z0-9@#$%^&*' < /dev/urandom | head -c 16)
+    NEW_USER=$(openssl rand -hex 4)
+    NEW_PASS=$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | cut -c1-16)
     NEW_HASH=$(MERIDIAN_PASS="$NEW_PASS" "$VENV_PY" -c "import bcrypt,os; print(bcrypt.hashpw(os.environ['MERIDIAN_PASS'].encode(), bcrypt.gensalt(12)).decode())")
 
     "$VENV_PY" -c "
@@ -165,8 +179,8 @@ fi
 # ─── Генерация credentials ──────────────────────────────────────────────────
 info "Генерирую учётные данные администратора…"
 
-ADMIN_USER=$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 8)
-ADMIN_PASS=$(LC_ALL=C tr -dc 'A-Za-z0-9@#$%^&*' < /dev/urandom | head -c 16)
+ADMIN_USER=$(openssl rand -hex 4)
+ADMIN_PASS=$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | cut -c1-16)
 ADMIN_HASH=$(MERIDIAN_PASS="$ADMIN_PASS" "$VENV_PY" -c "import bcrypt,os; print(bcrypt.hashpw(os.environ['MERIDIAN_PASS'].encode(), bcrypt.gensalt(12)).decode())")
 JWT_SECRET=$(openssl rand -hex 32)
 
