@@ -5,7 +5,7 @@ INSTALL_DIR="${INSTALL_DIR:-/opt/mtproto-proxy}"
 MTPROTO_DIR="${INSTALL_DIR}/services/mtproto"
 SERVICE_DIR="${INSTALL_DIR}/services/panel"
 DATA_DIR="/opt/meridian"
-REPO_BASE="${REPO_BASE:-https://raw.githubusercontent.com/SergeyNakhankov/vpntools/master/traefik-sni-hub}"
+REPO_BASE="${REPO_BASE:-https://raw.githubusercontent.com/SergeyNakhankov/vpntools/panel/traefik-sni-hub}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
