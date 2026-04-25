@@ -54,6 +54,12 @@ if [[ -d "/opt/meridian" ]]; then
     rm -rf /opt/meridian
 fi
 
+# Удаляем cron-задачи certbot для панели
+if crontab -l 2>/dev/null | grep -q "${INSTALL_DIR}"; then
+    info "Удаляю cron-задачи…"
+    crontab -l 2>/dev/null | grep -v "${INSTALL_DIR}" | crontab - || true
+fi
+
 # Удаляю каталог
 info "Удаляю ${INSTALL_DIR}…"
 cd /

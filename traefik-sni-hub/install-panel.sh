@@ -19,17 +19,67 @@ ok()    { echo -e "${GREEN}✔${NC} $*"; }
 warn()  { echo -e "${YELLOW}⚠${NC}  $*"; }
 fail()  { echo -e "${RED}✘${NC} $*" >&2; exit 1; }
 
+# ─── Зависимости ────────────────────────────────────────────────────────────
+VENV_DIR="${DATA_DIR}/.venv"
+VENV_PY="${VENV_DIR}/bin/python"
+PIP_OPTS="--default-timeout=60 --retries=3 --prefer-binary"
+
+install_system_deps() {
+    info "Проверяю системные зависимости…"
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get update -y >/dev/null 2>&1 || fail "apt-get update не удался"
+
+    apt-get install -y \
+        python3 \
+        python3-pip \
+        python3-venv \
+        python3-dev \
+        build-essential \
+        curl \
+        dnsutils \
+        openssl \
+        ca-certificates \
+        xxd \
+        || fail "Не удалось установить системные пакеты"
+
+    ok "Системные зависимости готовы"
+}
+
+setup_venv() {
+    if [[ ! -x "$VENV_PY" ]]; then
+        info "Создаю Python venv в ${VENV_DIR}…"
+        mkdir -p "${DATA_DIR}"
+        python3 -m venv "$VENV_DIR" || fail "Не удалось создать venv"
+    fi
+
+    "$VENV_PY" -m pip install --upgrade pip ${PIP_OPTS} >/dev/null \
+        || fail "Не удалось обновить pip в venv"
+
+    ok "venv готов: ${VENV_DIR}"
+}
+
+install_py_pkg() {
+    local pkg="$1"
+    "$VENV_PY" -c "import ${pkg}" 2>/dev/null && return 0
+
+    info "Устанавливаю Python пакет: ${pkg}"
+    "$VENV_PY" -m pip install ${PIP_OPTS} "${pkg}" \
+        || fail "Не удалось установить ${pkg} в venv"
+    ok "${pkg} установлен"
+}
+
 # ─── --reset-password ───────────────────────────────────────────────────────
 if [[ "${1:-}" == "--reset-password" ]]; then
     [[ $EUID -eq 0 ]] || fail "Запусти от root"
     [[ -f "${DATA_DIR}/config.json" ]] || fail "Панель не установлена. Сначала запусти install-panel.sh"
+    [[ -x "$VENV_PY" ]] || fail "Python venv не найден (${VENV_DIR}). Переустанови панель."
 
     NEW_USER=$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 8)
     NEW_PASS=$(LC_ALL=C tr -dc 'A-Za-z0-9@#$%^&*' < /dev/urandom | head -c 16)
-    NEW_HASH=$(MERIDIAN_PASS="$NEW_PASS" python3 -c "import bcrypt,os; print(bcrypt.hashpw(os.environ['MERIDIAN_PASS'].encode(), bcrypt.gensalt(12)).decode())")
+    NEW_HASH=$(MERIDIAN_PASS="$NEW_PASS" "$VENV_PY" -c "import bcrypt,os; print(bcrypt.hashpw(os.environ['MERIDIAN_PASS'].encode(), bcrypt.gensalt(12)).decode())")
 
-    JWT_SECRET=$(python3 -c "import json; d=json.load(open('${DATA_DIR}/config.json')); print(d['jwt_secret'])")
-    python3 -c "
+    "$VENV_PY" -c "
 import json
 d = json.load(open('${DATA_DIR}/config.json'))
 d['username'] = '${NEW_USER}'
@@ -57,7 +107,12 @@ fi
 [[ -f "${MTPROTO_DIR}/.env" ]] || fail "Сначала установи MTProto (install-mtproto.sh)"
 docker ps --format '{{.Names}}' | grep -q traefik || fail "Traefik не запущен"
 docker ps --format '{{.Names}}' | grep -q mtproto  || fail "MTProto не запущен"
-command -v python3 >/dev/null 2>&1 || fail "python3 не найден"
+
+# ─── Установка зависимостей ─────────────────────────────────────────────────
+install_system_deps
+setup_venv
+install_py_pkg bcrypt
+install_py_pkg toml
 
 # ─── Повторный запуск ───────────────────────────────────────────────────────
 if [[ -f "${SERVICE_DIR}/docker-compose.yml" ]]; then
@@ -110,15 +165,9 @@ fi
 # ─── Генерация credentials ──────────────────────────────────────────────────
 info "Генерирую учётные данные администратора…"
 
-# Устанавливаем bcrypt если нет
-python3 -c "import bcrypt" 2>/dev/null || {
-    info "Устанавливаю bcrypt…"
-    pip3 install bcrypt --quiet --break-system-packages 2>/dev/null || pip3 install bcrypt --quiet
-}
-
 ADMIN_USER=$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 8)
 ADMIN_PASS=$(LC_ALL=C tr -dc 'A-Za-z0-9@#$%^&*' < /dev/urandom | head -c 16)
-ADMIN_HASH=$(MERIDIAN_PASS="$ADMIN_PASS" python3 -c "import bcrypt,os; print(bcrypt.hashpw(os.environ['MERIDIAN_PASS'].encode(), bcrypt.gensalt(12)).decode())")
+ADMIN_HASH=$(MERIDIAN_PASS="$ADMIN_PASS" "$VENV_PY" -c "import bcrypt,os; print(bcrypt.hashpw(os.environ['MERIDIAN_PASS'].encode(), bcrypt.gensalt(12)).decode())")
 JWT_SECRET=$(openssl rand -hex 32)
 
 ok "Credentials сгенерированы"
@@ -127,7 +176,7 @@ ok "Credentials сгенерированы"
 mkdir -p "${SERVICE_DIR}/html/panel" "${SERVICE_DIR}/certs" "${SERVICE_DIR}/backend" "${DATA_DIR}"
 
 # ─── Сохраняем config.json ──────────────────────────────────────────────────
-python3 -c "
+"$VENV_PY" -c "
 import json
 cfg = {
     'username': '${ADMIN_USER}',
@@ -135,7 +184,7 @@ cfg = {
     'jwt_secret': '${JWT_SECRET}',
 }
 json.dump(cfg, open('${DATA_DIR}/config.json', 'w'), indent=2)
-"
+" || fail "Не удалось создать config.json"
 chmod 600 "${DATA_DIR}/config.json"
 ok "config.json создан"
 
@@ -147,9 +196,8 @@ if [[ ! -f "$TOML_PATH" ]]; then
     FULL_SECRET="ee${SECRET}${DOMAIN_HEX}"
     EE_DOMAIN_FOR_TOML="${DECOY_DOMAIN}:8443"
 
-    python3 -c "
-import toml, sys
-sys.path.insert(0, '.')
+    "$VENV_PY" -c "
+import toml
 data = {
     'server': {
         'port': int('${PROXY_PORT:-2443}'),
@@ -163,27 +211,9 @@ data = {
         }
     ],
 }
-# toml нужен — устанавливаем если нет
-try:
-    import toml
-except ImportError:
-    import subprocess; subprocess.run(['pip3','install','toml','-q'])
-    import toml
 with open('${TOML_PATH}', 'w') as f:
     toml.dump(data, f)
-" || {
-        # Если python3 toml недоступен — формируем вручную
-        cat > "$TOML_PATH" <<TOMLEOF
-[server]
-port = ${PROXY_PORT:-2443}
-stats_port = 8888
-ee_domain = "${DECOY_DOMAIN}:8443"
-
-[[secret]]
-secret = "${FULL_SECRET}"
-max_connections = 15
-TOMLEOF
-    }
+" || fail "Не удалось сгенерировать teleproxy.toml"
     ok "teleproxy.toml создан"
 else
     ok "teleproxy.toml уже существует"
@@ -252,7 +282,7 @@ if [[ -z "$MANIFEST" ]]; then
 fi
 MANIFEST_TMP=$(mktemp)
 echo "$MANIFEST" > "$MANIFEST_TMP"
-ASSET_FILES=$(python3 - "$MANIFEST_TMP" <<'PYEOF'
+ASSET_FILES=$("$VENV_PY" - "$MANIFEST_TMP" <<'PYEOF'
 import json, sys
 with open(sys.argv[1]) as f:
     m = json.load(f)

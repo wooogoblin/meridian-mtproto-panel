@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meridian — Sign In</title>
+<title>Sign In</title>
 <meta name="robots" content="noindex, nofollow">
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -193,14 +193,13 @@ body {
       </svg>
     </div>
     <div>
-      <div class="brand-name">Meridian</div>
-      <div class="brand-sub">Proxy Panel</div>
+      <div class="brand-name">Server Console</div>
+      <div class="brand-sub">Administration</div>
     </div>
   </div>
-  <p class="tagline">Sign in to continue</p>
+  <p class="tagline">Authentication required</p>
 
-  <div class="alert alert-err"  id="err"></div>
-  <div class="alert alert-warn" id="warn"></div>
+  <div class="alert alert-err" id="err"></div>
 
   <form id="f">
     <div class="fg">
@@ -217,24 +216,20 @@ body {
     <button class="btn" type="submit" id="btn"><span id="bt">Sign in</span></button>
   </form>
 
-  <div class="ft">&copy; 2026 Meridian Systems</div>
+  <div class="ft">&copy; 2026</div>
 </div>
 
 <script>
 (function () {
-  var attempts = 0, locked = false;
-  var f    = document.getElementById('f');
-  var btn  = document.getElementById('btn');
-  var bt   = document.getElementById('bt');
-  var err  = document.getElementById('err');
-  var warn = document.getElementById('warn');
+  var f   = document.getElementById('f');
+  var btn = document.getElementById('btn');
+  var bt  = document.getElementById('bt');
+  var err = document.getElementById('err');
 
   f.addEventListener('submit', function (e) {
     e.preventDefault();
-    if (locked) return;
 
     err.style.display = 'none';
-    warn.style.display = 'none';
     btn.disabled = true;
     bt.innerHTML = '<div class="spinner"></div>';
 
@@ -256,19 +251,11 @@ body {
         return;
       }
       document.getElementById('pw').value = '';
-      attempts++;
-      if (attempts >= 5) {
-        locked = true;
-        warn.textContent = 'Too many failed attempts. Try again in 15 minutes.';
-        warn.style.display = 'block';
-        setTimeout(function () { locked = false; attempts = 0; warn.style.display = 'none'; }, 900000);
-      } else {
-        err.textContent = (typeof r.data.detail === 'string' ? r.data.detail : null) || 'Invalid username or password.';
-        err.style.display = 'block';
-      }
+      err.textContent = (typeof r.data.detail === 'string' ? r.data.detail : null) || 'Authentication failed.';
+      err.style.display = 'block';
     })
     .catch(function () {
-      err.textContent = 'Service unavailable. Please try again later.';
+      err.textContent = 'Service unavailable.';
       err.style.display = 'block';
     })
     .finally(function () {
