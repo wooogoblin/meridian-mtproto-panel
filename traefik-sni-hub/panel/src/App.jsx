@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import QRCode from 'qrcode'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import QRCodeStyling from 'qr-code-styling'
 import './App.css'
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -267,39 +267,31 @@ function CopyField({ label, value, display, copiedKey, onCopy, mono, actions }) 
 
 // ─── QRImage ──────────────────────────────────────────────────────────────────
 function QRImage({ value }) {
-  const matrix = useMemo(() => {
-    if (!value) return null
-    try {
-      const qr = QRCode.create(value, { errorCorrectionLevel: 'M' })
-      return qr.modules
-    } catch { return null }
+  const [src, setSrc] = useState(null)
+
+  useEffect(() => {
+    if (!value) return
+    let url = null
+    new QRCodeStyling({
+      width: 120, height: 120,
+      type: 'svg',
+      data: value,
+      qrOptions:            { errorCorrectionLevel: 'M' },
+      dotsOptions:          { color: '#2AABEE', type: 'dots' },
+      backgroundOptions:    { color: '#0f1318' },
+      cornersSquareOptions: { type: 'extra-rounded', color: '#2AABEE' },
+      cornersDotOptions:    { color: '#2AABEE', type: 'dot' },
+    }).getRawData('svg').then(blob => {
+      if (!blob) return
+      url = URL.createObjectURL(blob)
+      setSrc(url)
+    }).catch(() => {})
+    return () => { if (url) URL.revokeObjectURL(url) }
   }, [value])
-
-  if (!matrix) return <div className="qr-wrap" />
-
-  const { data, size } = matrix
-  const pad   = 2
-  const total = size + 2 * pad
-
-  const dots = []
-  for (let r = 0; r < size; r++) {
-    for (let c = 0; c < size; c++) {
-      if (!data[r * size + c]) continue
-      dots.push(
-        <rect key={r * size + c}
-          x={pad + c + 0.1} y={pad + r + 0.1}
-          width={0.8} height={0.8} rx={0.38} ry={0.38}
-        />
-      )
-    }
-  }
 
   return (
     <div className="qr-wrap" title="Scan in Telegram">
-      <svg viewBox={`0 0 ${total} ${total}`} style={{ display: 'block', width: '120px', height: '120px' }}>
-        <rect width={total} height={total} fill="#0f1318" />
-        <g fill="#e2e8f0">{dots}</g>
-      </svg>
+      {src && <img src={src} width="120" height="120" style={{ display: 'block' }} alt="" />}
       <span className="qr-logo">
         <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
           <circle cx="120" cy="120" r="120" fill="#2AABEE"/>
