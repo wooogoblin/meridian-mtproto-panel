@@ -1,4 +1,5 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import QRCodeLib from 'qrcode'
 import './App.css'
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -264,15 +265,18 @@ function CopyField({ label, value, display, copiedKey, onCopy, mono, actions }) 
   )
 }
 
-// ─── QRPlaceholder ────────────────────────────────────────────────────────────
-function QRPlaceholder({ value }) {
-  return (
-    <div className="qr-placeholder" title={value}>
-      <IconQR />
-      <span>QR Code</span>
-      <span className="qr-note">Scan in Telegram</span>
-    </div>
-  )
+// ─── QRImage ──────────────────────────────────────────────────────────────────
+function QRImage({ value }) {
+  const ref = useRef(null)
+  useEffect(() => {
+    if (!ref.current || !value) return
+    QRCodeLib.toCanvas(ref.current, value, {
+      width: 96,
+      margin: 1,
+      color: { dark: '#e2e8f0', light: '#0f1318' },
+    }).catch(() => {})
+  }, [value])
+  return <canvas ref={ref} className="qr-canvas" title="Scan in Telegram" />
 }
 
 // ─── UserDetail ───────────────────────────────────────────────────────────────
@@ -284,7 +288,9 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
   const [editingLabel, setEditingLabel] = useState(false)
   const [labelInput,   setLabelInput]   = useState(user.label)
   const [labelBusy,    setLabelBusy]    = useState(false)
-  const link   = buildTgLink(user.secret, serverIp)
+  const link        = buildTgLink(user.secret, serverIp)
+  const displayLink = showSecret ? link : link.replace(/secret=[^&]+/, 'secret=ee' + '•'.repeat(16))
+  const displaySecret = showSecret ? user.secret : 'ee' + '•'.repeat(32)
   const pct    = user.maxConn > 0 ? Math.round((user.conn / user.maxConn) * 100) : 0
   const barColor = pct > 80 ? 'var(--red)' : pct > 55 ? 'var(--yellow)' : 'var(--accent)'
 
@@ -355,24 +361,20 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
         </div>
       </div>
 
-      {/* link */}
-      <div className="detail-section">
-        <CopyField
-          label="Telegram link"
-          value={link}
-          display={<span className="link-display"><IconLink /><span>{link}</span></span>}
-          copiedKey={copiedKey === 'Telegram link'}
-          onCopy={onCopy}
-        />
-      </div>
-
-      {/* secret + QR */}
+      {/* link + secret + QR */}
       <div className="detail-section detail-secret-row">
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <CopyField
+            label="Telegram link"
+            value={link}
+            display={<span className="link-display"><IconLink /><span>{displayLink}</span></span>}
+            copiedKey={copiedKey === 'Telegram link'}
+            onCopy={onCopy}
+          />
           <CopyField
             label="Secret"
             value={user.secret}
-            display={showSecret ? user.secret : `ee${'•'.repeat(20)}`}
+            display={displaySecret}
             copiedKey={copiedKey === 'Secret'}
             onCopy={onCopy}
             mono
@@ -383,7 +385,7 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
             }
           />
         </div>
-        <QRPlaceholder value={link} />
+        <QRImage value={link} />
       </div>
 
       {/* details grid */}

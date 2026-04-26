@@ -343,24 +343,14 @@
 .conn-edit-input:focus { outline: none; }
 
 /* QR */
-.qr-placeholder {
+.qr-canvas {
   width: 96px;
   height: 96px;
   flex-shrink: 0;
-  background: var(--bg-input);
-  border: 1px dashed var(--border);
   border-radius: var(--radius-sm);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  color: var(--text-muted);
-  font-size: 10px;
-  cursor: default;
+  display: block;
+  align-self: center;
 }
-.qr-placeholder span { font-size: 10px; }
-.qr-note { color: var(--text-muted); opacity: .6; }
 
 /* ── empty state ─────────────────────────────────────────────────────────── */
 .empty-state {
