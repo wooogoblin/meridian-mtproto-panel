@@ -68,17 +68,17 @@ install_py_pkg() {
     local pkg="$1"
     "$VENV_PY" -c "import ${pkg}" 2>/dev/null && return 0
 
-    info "Устанавливаю Python пакет: ${pkg} (wheel-only)"
-    if "$VENV_PY" -m pip install ${PIP_OPTS} --only-binary=:all: "${pkg}"; then
-        ok "${pkg} установлен (wheel)"
+    info "Устанавливаю Python пакет: ${pkg}…"
+    if "$VENV_PY" -m pip install ${PIP_OPTS} --only-binary=:all: "${pkg}" >/dev/null 2>&1; then
+        ok "${pkg} установлен"
         return 0
     fi
 
     warn "Wheel для ${pkg} не найден — собираю из исходников"
     install_build_tools
-    "$VENV_PY" -m pip install ${PIP_OPTS} "${pkg}" \
+    "$VENV_PY" -m pip install ${PIP_OPTS} "${pkg}" >/dev/null 2>&1 \
         || fail "Не удалось установить ${pkg}"
-    ok "${pkg} установлен (compiled)"
+    ok "${pkg} установлен"
 }
 
 # ─── --reset-password ───────────────────────────────────────────────────────
@@ -478,16 +478,18 @@ ok "Traefik catch-all настроен"
 cd "$SERVICE_DIR"
 
 info "Сборка backend-образа…"
-BUILD_OUT=$(docker compose build 2>&1) \
-    || { echo "$BUILD_OUT"; fail "Сборка backend-образа не удалась"; }
+if ! docker compose build --progress plain >/dev/null 2>&1; then
+    docker compose build --progress plain || fail "Сборка backend-образа не удалась"
+fi
+ok "Backend-образ собран"
 
 info "Запуск панели…"
-docker compose up -d --remove-orphans
+docker compose up -d --remove-orphans >/dev/null 2>&1
 
 # ─── Перезапускаем MTProto с TOML ───────────────────────────────────────────
 info "Перезапускаю MTProto с TOML-конфигом…"
 cd "${MTPROTO_DIR}"
-docker compose up -d --force-recreate
+docker compose up -d --force-recreate >/dev/null 2>&1
 
 if docker ps --format '{{.Names}}' | grep -q mtproto; then
     ok "MTProto запущен с TOML"
