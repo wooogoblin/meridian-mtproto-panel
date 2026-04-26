@@ -115,23 +115,19 @@ def reload_teleproxy() -> bool:
 # ─── Live connection stats ────────────────────────────────────────────────────
 
 def fetch_conn_stats() -> dict[str, int]:
-    """Return {label: current_connections} from teleproxy Prometheus stats. Falls back to {}."""
+    """Return {label: current_connections} from teleproxy Prometheus /metrics. Falls back to {}."""
     import re
     from urllib.request import urlopen
-    from urllib.error import URLError
     try:
-        with urlopen("http://mtproto:8888/", timeout=2) as resp:
+        with urlopen("http://mtproto:8888/metrics", timeout=2) as resp:
             text = resp.read().decode()
     except Exception:
         return {}
     result: dict[str, int] = {}
     for line in text.splitlines():
-        if line.startswith('#') or not line.strip():
+        if not line.startswith('teleproxy_secret_connections{'):
             continue
-        if 'connections' not in line or 'total' in line or 'limit' in line:
-            continue
-        m = re.match(r'\S+\{[^}]*\blabel="([^"]+)"[^}]*\}\s+(\d+)', line)
+        m = re.match(r'teleproxy_secret_connections\{secret="([^"]+)"\}\s+(\d+)', line)
         if m:
-            label, count = m.group(1), int(m.group(2))
-            result[label] = result.get(label, 0) + count
+            result[m.group(1)] = int(m.group(2))
     return result
