@@ -314,7 +314,11 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
   const [labelInput,   setLabelInput]   = useState(user.label)
   const [labelBusy,    setLabelBusy]    = useState(false)
   const link        = buildTgLink(user.secret, serverIp)
-  const displayLink = showSecret ? link : link.replace(/secret=[^&]+/, 'secret=ee' + '•'.repeat(16))
+  const displayLink = showSecret
+    ? link
+    : link
+        .replace(/server=[^&]+/, 'server=' + '•'.repeat(15))
+        .replace(/secret=[^&]+/, 'secret=ee' + '•'.repeat(15))
   const displaySecret = showSecret ? user.secret : 'ee' + '•'.repeat(32)
   const pct    = user.maxConn > 0 ? Math.round((user.conn / user.maxConn) * 100) : 0
   const barColor = pct > 80 ? 'var(--red)' : pct > 55 ? 'var(--yellow)' : 'var(--accent)'
