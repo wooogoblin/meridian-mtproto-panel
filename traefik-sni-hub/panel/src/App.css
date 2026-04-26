@@ -166,17 +166,19 @@
   flex: 1;
   overflow-y: auto;
   background: var(--bg-base);
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── user detail ─────────────────────────────────────────────────────────── */
 .user-detail {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 32px 28px;
+  flex: 1;
+  padding: 32px 48px;
   display: flex;
   flex-direction: column;
   gap: 0;
 }
+.detail-section:last-child { margin-bottom: 0; }
 
 .detail-header {
   display: flex;
@@ -605,6 +607,15 @@
   animation: fadeIn .15s ease;
 }
 @keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(-6px); } }
+
+/* ── responsive breakpoints ─────────────────────────────────────────────── */
+@media (min-width: 1920px) {
+  .user-detail { padding: 40px 64px; }
+}
+@media (min-width: 2560px) {
+  .user-detail { padding: 48px 80px; }
+  .sidebar     { width: 320px; }
+}
 
 /* ── skeleton ────────────────────────────────────────────────────────────── */
 @keyframes shimmer {
