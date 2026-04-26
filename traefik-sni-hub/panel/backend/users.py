@@ -56,7 +56,7 @@ def _merge(meta: list[dict], env: dict, conn_stats: dict[str, int] | None = None
             "id":       m["id"],
             "label":    m["label"],
             "secret":   m["secret"],
-            "maxConn":  env_entry.get("limit", 15),
+            "maxConn":  env_entry.get("limit", m.get("maxConn", 15)),
             "conn":     conn_stats.get(m["label"], 0),
             "active":   m.get("active", True),
             "created":  m["created"],
@@ -100,6 +100,7 @@ def create_user(label: str, max_conn: int) -> dict:
         "id":       new_id,
         "label":    label,
         "secret":   full_secret,
+        "maxConn":  max_conn,
         "active":   True,
         "created":  datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "lastSeen": "never",
@@ -141,6 +142,7 @@ def update_user(user_id: int, active: Optional[bool] = None, max_conn: Optional[
     if max_conn is not None:
         teleproxy_config.update_secret_limit(env, raw_key, max_conn)
         current_max = max_conn
+        entry["maxConn"] = max_conn
 
     _save_meta(meta)
     teleproxy_config.write_env(env)
@@ -191,7 +193,7 @@ def sync_all_to_toml() -> None:
             continue
         raw_key = _raw_key(m["secret"])
         if raw_key not in existing:
-            teleproxy_config.add_secret(env, _toml_entry_for(m, 15))
+            teleproxy_config.add_secret(env, _toml_entry_for(m, m.get("maxConn", 15)))
             changed = True
 
     if changed:
