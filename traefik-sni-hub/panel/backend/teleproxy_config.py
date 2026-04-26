@@ -72,6 +72,14 @@ def update_secret_limit(env: dict, key: str, limit: int) -> bool:
     return False
 
 
+def update_secret_label(env: dict, key: str, label: str) -> bool:
+    for i in range(1, 17):
+        if env.get(f"SECRET_{i}", "").strip() == key:
+            env[f"SECRET_LABEL_{i}"] = label
+            return True
+    return False
+
+
 # ─── TOML (hot-reload via SIGHUP) ─────────────────────────────────────────────
 
 def write_toml(env: dict) -> None:

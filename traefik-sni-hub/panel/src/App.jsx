@@ -35,6 +35,13 @@ function buildTgLink(secret, serverIp) {
   return `tg://proxy?server=${serverIp}&port=443&secret=${secret}`
 }
 
+function formatLastSeen(value) {
+  if (!value || value === 'never') return 'never'
+  const dt = new Date(value.replace(' ', 'T') + 'Z')
+  if (isNaN(dt.getTime())) return value
+  return dt.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+}
+
 function initials(label) {
   return label.slice(0, 2).toUpperCase()
 }
@@ -269,11 +276,14 @@ function QRPlaceholder({ value }) {
 }
 
 // ─── UserDetail ───────────────────────────────────────────────────────────────
-function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onCopy, toggling, onUpdateMaxConn }) {
+function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onCopy, toggling, onUpdate }) {
   const [showSecret,   setShowSecret]   = useState(false)
   const [editingConn,  setEditingConn]  = useState(false)
   const [connInput,    setConnInput]    = useState(user.maxConn)
   const [connBusy,     setConnBusy]     = useState(false)
+  const [editingLabel, setEditingLabel] = useState(false)
+  const [labelInput,   setLabelInput]   = useState(user.label)
+  const [labelBusy,    setLabelBusy]    = useState(false)
   const link   = buildTgLink(user.secret, serverIp)
   const pct    = user.maxConn > 0 ? Math.round((user.conn / user.maxConn) * 100) : 0
   const barColor = pct > 80 ? 'var(--red)' : pct > 55 ? 'var(--yellow)' : 'var(--accent)'
@@ -282,10 +292,22 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
     const n = Math.max(1, Math.min(100, connInput || 1))
     setConnBusy(true)
     try {
-      await onUpdateMaxConn(user.id, n)
+      await onUpdate(user.id, { maxConn: n })
       setEditingConn(false)
     } finally {
       setConnBusy(false)
+    }
+  }
+
+  async function saveLabel() {
+    const trimmed = labelInput.trim()
+    if (!trimmed || !/^[a-z0-9_-]+$/i.test(trimmed)) return
+    setLabelBusy(true)
+    try {
+      await onUpdate(user.id, { label: trimmed })
+      setEditingLabel(false)
+    } finally {
+      setLabelBusy(false)
     }
   }
 
@@ -297,7 +319,24 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
           {initials(user.label)}
         </div>
         <div className="detail-title">
-          <h2 className="detail-name">{user.label}</h2>
+          {editingLabel
+            ? <div className="label-edit-row">
+                <input className="label-edit-input" value={labelInput} autoFocus
+                       onChange={e => setLabelInput(e.target.value)}
+                       onKeyDown={e => { if (e.key === 'Enter') saveLabel(); if (e.key === 'Escape') setEditingLabel(false) }} />
+                <button className="btn btn-sm btn-primary" disabled={labelBusy} onClick={saveLabel}>
+                  {labelBusy ? <span className="btn-spinner" /> : 'Save'}
+                </button>
+                <button className="btn btn-sm btn-ghost" disabled={labelBusy} onClick={() => setEditingLabel(false)}>✕</button>
+              </div>
+            : <h2 className="detail-name">
+                {user.label}
+                <button className="icon-btn" style={{ width: 22, height: 22, marginLeft: 6 }} title="Rename"
+                  onClick={() => { setLabelInput(user.label); setEditingLabel(true) }}>
+                  <IconEdit />
+                </button>
+              </h2>
+          }
           <span className="detail-created">Created {user.created}</span>
         </div>
         <div className="detail-header-actions">
@@ -321,7 +360,7 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
         <CopyField
           label="Telegram link"
           value={link}
-          display={<span className="link-display"><IconLink />{link.slice(0, 55)}{link.length > 55 ? '…' : ''}</span>}
+          display={<span className="link-display"><IconLink /><span>{link}</span></span>}
           copiedKey={copiedKey === 'Telegram link'}
           onCopy={onCopy}
         />
@@ -329,7 +368,7 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
 
       {/* secret + QR */}
       <div className="detail-section detail-secret-row">
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <CopyField
             label="Secret"
             value={user.secret}
@@ -356,7 +395,7 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
             accent={user.active ? 'var(--green)' : 'var(--text-muted)'}
           />
           <DetailItem label="SNI domain" value={domain || '—'} />
-          <DetailItem label="Last activity" value={user.lastSeen} />
+          <DetailItem label="Last activity" value={formatLastSeen(user.lastSeen)} />
         </div>
       </div>
 
@@ -453,13 +492,13 @@ export default function App() {
       .finally(() => setLoading(false))
   }, [])
 
-  // ── auto-refresh conn stats every 10s ────────────────────────────────────
+  // ── auto-refresh conn stats every 5s ─────────────────────────────────────
   useEffect(() => {
     const id = setInterval(() => {
       api.getUsers()
         .then(list => { if (list) setUsers(list) })
         .catch(() => {})
-    }, 10000)
+    }, 5000)
     return () => clearInterval(id)
   }, [])
 
@@ -504,9 +543,9 @@ export default function App() {
     }
   }
 
-  async function handleUpdateMaxConn(id, maxConn) {
+  async function handleUpdate(id, data) {
     try {
-      const updated = await api.updateUser(id, { maxConn })
+      const updated = await api.updateUser(id, data)
       if (updated) setUsers(prev => prev.map(u => u.id === updated.id ? updated : u))
     } catch (err) {
       showError(err.message)
@@ -577,7 +616,7 @@ export default function App() {
               copiedKey={copiedKey}
               onCopy={onCopy}
               toggling={toggling}
-              onUpdateMaxConn={handleUpdateMaxConn}
+              onUpdate={handleUpdate}
             />
           : <EmptyState />
         }

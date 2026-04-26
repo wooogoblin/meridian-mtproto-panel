@@ -143,6 +143,7 @@ class CreateUserRequest(BaseModel):
 class UpdateUserRequest(BaseModel):
     active: Optional[bool] = None
     maxConn: Optional[int] = None
+    label: Optional[str] = None
 
 
 @app.get("/api/v1/users")
@@ -164,7 +165,11 @@ async def create_user(body: CreateUserRequest, user: AuthUser):
 async def update_user(user_id: int, body: UpdateUserRequest, user: AuthUser):
     if body.maxConn is not None and not 1 <= body.maxConn <= 100:
         raise HTTPException(status_code=400, detail="maxConn must be between 1 and 100")
-    result = users_module.update_user(user_id, active=body.active, max_conn=body.maxConn)
+    if body.label is not None:
+        lbl = body.label.strip()
+        if not lbl or not all(c.isalnum() or c in "-_" for c in lbl):
+            raise HTTPException(status_code=400, detail="Label: letters, digits, - and _ only")
+    result = users_module.update_user(user_id, active=body.active, max_conn=body.maxConn, label=body.label.strip() if body.label else None)
     if result is None:
         raise HTTPException(status_code=404, detail="User not found")
     return result

@@ -115,7 +115,7 @@ def create_user(label: str, max_conn: int) -> dict:
     return {**entry, "maxConn": max_conn, "conn": 0}
 
 
-def update_user(user_id: int, active: Optional[bool] = None, max_conn: Optional[int] = None) -> Optional[dict]:
+def update_user(user_id: int, active: Optional[bool] = None, max_conn: Optional[int] = None, label: Optional[str] = None) -> Optional[dict]:
     meta = _load_meta()
     env  = teleproxy_config.read_env()
 
@@ -126,6 +126,10 @@ def update_user(user_id: int, active: Optional[bool] = None, max_conn: Optional[
     raw_key      = _raw_key(entry["secret"])
     current_slot = next((s for s in teleproxy_config.get_secrets(env) if s["key"] == raw_key), {})
     current_max  = current_slot.get("limit", max_conn or 15)
+
+    if label is not None:
+        entry["label"] = label
+        teleproxy_config.update_secret_label(env, raw_key, label)
 
     if active is not None:
         entry["active"] = active
