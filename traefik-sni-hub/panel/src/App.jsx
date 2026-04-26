@@ -453,6 +453,16 @@ export default function App() {
       .finally(() => setLoading(false))
   }, [])
 
+  // ── auto-refresh conn stats every 10s ────────────────────────────────────
+  useEffect(() => {
+    const id = setInterval(() => {
+      api.getUsers()
+        .then(list => { if (list) setUsers(list) })
+        .catch(() => {})
+    }, 10000)
+    return () => clearInterval(id)
+  }, [])
+
   const activeCount = users.filter(u => u.active).length
   const totalConn   = users.reduce((s, u) => s + u.conn, 0)
   const selectedUser = users.find(u => u.id === selected) ?? null
