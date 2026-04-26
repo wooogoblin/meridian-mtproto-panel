@@ -1,15 +1,6 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
-import QRCodeStyling from 'qr-code-styling'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import QRCode from 'qrcode'
 import './App.css'
-
-const TELEGRAM_LOGO = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
-  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240">' +
-  '<circle cx="120" cy="120" r="120" fill="#2AABEE"/>' +
-  '<path fill="white" d="M97.9 167.3c-4 0-3.3-1.5-4.7-5.3L82 128.5 168.4 78"/>' +
-  '<path fill="#C8DAEA" d="M97.9 167.3c3.1 0 4.4-1.4 6.1-3l16.3-15.9-20.4-12.3"/>' +
-  '<path fill="#A9C9DD" d="M99.9 136.1l49.4 36.5c5.6 3.1 9.7 1.5 11.1-5.2l20.1-94.8c2-8.2-3.1-12-8.5-9.5L52.2 107c-8 3.2-8 7.7-1.5 9.7l30.3 9.5 70.2-44.3c3.3-2 6.3-.9 3.8 1.3"/>' +
-  '</svg>'
-)
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 const api = {
@@ -276,31 +267,49 @@ function CopyField({ label, value, display, copiedKey, onCopy, mono, actions }) 
 
 // ─── QRImage ──────────────────────────────────────────────────────────────────
 function QRImage({ value }) {
-  const containerRef = useRef(null)
-  const qrRef        = useRef(null)
-
-  useEffect(() => {
-    if (!containerRef.current || !value) return
-    if (!qrRef.current) {
-      qrRef.current = new QRCodeStyling({
-        width: 120, height: 120,
-        type: 'svg',
-        data: value,
-        image: TELEGRAM_LOGO,
-        qrOptions:    { errorCorrectionLevel: 'M' },
-        dotsOptions:  { color: '#e2e8f0', type: 'rounded' },
-        backgroundOptions: { color: '#0f1318' },
-        cornersSquareOptions: { type: 'extra-rounded', color: '#e2e8f0' },
-        cornersDotOptions:    { color: '#2AABEE' },
-        imageOptions: { margin: 4, imageSize: 0.32, crossOrigin: 'anonymous' },
-      })
-      qrRef.current.append(containerRef.current)
-    } else {
-      qrRef.current.update({ data: value })
-    }
+  const matrix = useMemo(() => {
+    if (!value) return null
+    try {
+      const qr = QRCode.create(value, { errorCorrectionLevel: 'M' })
+      return qr.modules
+    } catch { return null }
   }, [value])
 
-  return <div ref={containerRef} className="qr-canvas" title="Scan in Telegram" />
+  if (!matrix) return <div className="qr-wrap" />
+
+  const { data, size } = matrix
+  const pad   = 2
+  const total = size + 2 * pad
+
+  const dots = []
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (!data[r * size + c]) continue
+      dots.push(
+        <rect key={r * size + c}
+          x={pad + c + 0.1} y={pad + r + 0.1}
+          width={0.8} height={0.8} rx={0.38} ry={0.38}
+        />
+      )
+    }
+  }
+
+  return (
+    <div className="qr-wrap" title="Scan in Telegram">
+      <svg viewBox={`0 0 ${total} ${total}`} style={{ display: 'block', width: '120px', height: '120px' }}>
+        <rect width={total} height={total} fill="#0f1318" />
+        <g fill="#e2e8f0">{dots}</g>
+      </svg>
+      <span className="qr-logo">
+        <svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="120" cy="120" r="120" fill="#2AABEE"/>
+          <path fill="white" d="M97.9 167.3c-4 0-3.3-1.5-4.7-5.3L82 128.5 168.4 78"/>
+          <path fill="#C8DAEA" d="M97.9 167.3c3.1 0 4.4-1.4 6.1-3l16.3-15.9-20.4-12.3"/>
+          <path fill="#A9C9DD" d="M99.9 136.1l49.4 36.5c5.6 3.1 9.7 1.5 11.1-5.2l20.1-94.8c2-8.2-3.1-12-8.5-9.5L52.2 107c-8 3.2-8 7.7-1.5 9.7l30.3 9.5 70.2-44.3c3.3-2 6.3-.9 3.8 1.3"/>
+        </svg>
+      </span>
+    </div>
+  )
 }
 
 // ─── UserDetail ───────────────────────────────────────────────────────────────
