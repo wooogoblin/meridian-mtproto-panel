@@ -373,6 +373,53 @@
   height: 100%;
 }
 
+/* ── blur / reveal ───────────────────────────────────────────────────────── */
+.blurred {
+  filter: blur(5px);
+  user-select: none;
+  pointer-events: none;
+  transition: filter 0.25s ease;
+}
+.secret-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.reveal-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.reveal-btn:hover { border-color: var(--accent); color: var(--accent); }
+.reveal-btn svg { flex-shrink: 0; }
+
+/* ── QR block ─────────────────────────────────────────────────────────────── */
+.qr-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.qr-caption {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 /* ── empty state ─────────────────────────────────────────────────────────── */
 .empty-state {
   display: flex;

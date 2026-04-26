@@ -306,21 +306,15 @@ function QRImage({ value }) {
 
 // ─── UserDetail ───────────────────────────────────────────────────────────────
 function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onCopy, toggling, onUpdate }) {
-  const [showSecret,   setShowSecret]   = useState(false)
+  const [revealed,     setRevealed]     = useState(false)
   const [editingConn,  setEditingConn]  = useState(false)
   const [connInput,    setConnInput]    = useState(user.maxConn)
   const [connBusy,     setConnBusy]     = useState(false)
   const [editingLabel, setEditingLabel] = useState(false)
   const [labelInput,   setLabelInput]   = useState(user.label)
   const [labelBusy,    setLabelBusy]    = useState(false)
-  const link        = buildTgLink(user.secret, serverIp)
-  const displayLink = showSecret
-    ? link
-    : link
-        .replace(/server=[^&]+/, 'server=' + '•'.repeat(15))
-        .replace(/secret=[^&]+/, 'secret=ee' + '•'.repeat(15))
-  const displaySecret = showSecret ? user.secret : 'ee' + '•'.repeat(32)
-  const pct    = user.maxConn > 0 ? Math.round((user.conn / user.maxConn) * 100) : 0
+  const link     = buildTgLink(user.secret, serverIp)
+  const pct      = user.maxConn > 0 ? Math.round((user.conn / user.maxConn) * 100) : 0
   const barColor = pct > 80 ? 'var(--red)' : pct > 55 ? 'var(--yellow)' : 'var(--accent)'
 
   async function saveMaxConn() {
@@ -391,30 +385,38 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
       </div>
 
       {/* link + secret + QR */}
-      <div className="detail-section detail-secret-row">
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <CopyField
-            label="Telegram link"
-            value={link}
-            display={<span className="link-display"><IconLink /><span>{displayLink}</span></span>}
-            copiedKey={copiedKey === 'Telegram link'}
-            onCopy={onCopy}
-          />
-          <CopyField
-            label="Secret"
-            value={user.secret}
-            display={displaySecret}
-            copiedKey={copiedKey === 'Secret'}
-            onCopy={onCopy}
-            mono
-            actions={
-              <button className="icon-btn" onClick={() => setShowSecret(v => !v)} title="Toggle visibility">
-                {showSecret ? <IconEyeOff /> : <IconEye />}
-              </button>
-            }
-          />
+      <div className="detail-section">
+        <div className="secret-section-header">
+          <span className="detail-label" style={{ margin: 0 }}>Connection</span>
+          <button className="reveal-btn" onClick={() => setRevealed(v => !v)}>
+            {revealed ? <><IconEyeOff /> Hide</> : <><IconEye /> Reveal</>}
+          </button>
         </div>
-        <QRImage value={link} />
+        <div className="detail-secret-row">
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <CopyField
+              label="Telegram link"
+              value={link}
+              display={<span className="link-display"><IconLink /><span className={revealed ? '' : 'blurred'}>{link}</span></span>}
+              copiedKey={copiedKey === 'Telegram link'}
+              onCopy={onCopy}
+            />
+            <CopyField
+              label="Secret"
+              value={user.secret}
+              display={<span className={revealed ? '' : 'blurred'}>{user.secret}</span>}
+              copiedKey={copiedKey === 'Secret'}
+              onCopy={onCopy}
+              mono
+            />
+          </div>
+          <div className="qr-block">
+            <div className={revealed ? '' : 'blurred'} style={{ lineHeight: 0 }}>
+              <QRImage value={link} />
+            </div>
+            <span className="qr-caption">Connect via QR</span>
+          </div>
+        </div>
       </div>
 
       {/* details grid */}
@@ -425,7 +427,7 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
             value={user.active ? 'Active' : 'Disabled'}
             accent={user.active ? 'var(--green)' : 'var(--text-muted)'}
           />
-          <DetailItem label="SNI domain" value={domain || '—'} />
+          <DetailItem label="SNI domain" value={<span>🌐 <span className={revealed ? '' : 'blurred'}>{domain || '—'}</span></span>} />
           <DetailItem label="Last activity" value={formatLastSeen(user.lastSeen)} />
         </div>
       </div>
@@ -435,7 +437,7 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
         <div className="detail-label" style={{ marginBottom: 8 }}>
           Connection limit
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="conn-fraction">{user.conn} / {user.maxConn}</span>
+            <span className="conn-fraction">{user.conn} of {user.maxConn} connections</span>
             {!editingConn && (
               <button className="icon-btn" style={{ width: 22, height: 22 }} title="Edit limit"
                 onClick={() => { setConnInput(user.maxConn); setEditingConn(true) }}>
@@ -461,7 +463,7 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, copiedKey, onC
         </div>
         <div className="progress-labels">
           <span>{pct}% used</span>
-          <span>{user.maxConn - user.conn} slots free</span>
+          <span>{user.maxConn - user.conn} free</span>
         </div>
       </div>
     </div>
