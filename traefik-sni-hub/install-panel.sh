@@ -25,23 +25,23 @@ VENV_PY="${VENV_DIR}/bin/python"
 PIP_OPTS="--default-timeout=60 --retries=3 --prefer-binary"
 
 install_system_deps() {
-    info "Проверяю системные зависимости…"
+    # Skip apt entirely if all required tools are already present
+    if command -v python3 >/dev/null 2>&1 && \
+       command -v curl    >/dev/null 2>&1 && \
+       command -v dig     >/dev/null 2>&1 && \
+       command -v openssl >/dev/null 2>&1 && \
+       command -v xxd     >/dev/null 2>&1 && \
+       python3 -m venv --help >/dev/null 2>&1; then
+        ok "Системные зависимости готовы"
+        return 0
+    fi
+
+    info "Устанавливаю системные зависимости…"
     export DEBIAN_FRONTEND=noninteractive
-
     apt-get update -y >/dev/null 2>&1 || fail "apt-get update не удался"
-
-    # Минимум — без компилятора. build-tools поставим только если wheel не найдётся.
-    apt-get install -y \
-        python3 \
-        python3-pip \
-        python3-venv \
-        curl \
-        dnsutils \
-        openssl \
-        xxd \
-        || fail "Не удалось установить системные пакеты"
-
-    ok "Системные зависимости готовы"
+    apt-get install -y python3 python3-pip python3-venv curl dnsutils openssl xxd \
+        >/dev/null 2>&1 || fail "Не удалось установить системные пакеты"
+    ok "Системные зависимости установлены"
 }
 
 install_build_tools() {
@@ -56,11 +56,9 @@ setup_venv() {
         info "Создаю Python venv в ${VENV_DIR}…"
         mkdir -p "${DATA_DIR}"
         python3 -m venv "$VENV_DIR" || fail "Не удалось создать venv"
+        "$VENV_PY" -m pip install --upgrade pip ${PIP_OPTS} >/dev/null \
+            || fail "Не удалось обновить pip в venv"
     fi
-
-    "$VENV_PY" -m pip install --upgrade pip ${PIP_OPTS} >/dev/null \
-        || fail "Не удалось обновить pip в venv"
-
     ok "venv готов: ${VENV_DIR}"
 }
 
@@ -153,11 +151,12 @@ DOMAIN_HEX=$(printf '%s' "$DECOY_DOMAIN" | xxd -p | tr -d '\n')
 EE_SECRET="ee${RAW_KEY}${DOMAIN_HEX}"
 ok "Секрет: ${BOLD}${RAW_KEY:0:8}…${NC}"
 
-# ─── Конвертируем mtproto .env в формат SECRET_N ────────────────────────────
-# teleproxy читает SECRET_1..16 при старте и генерирует config.toml из них.
-# Все пользователи выживают при рестарте контейнера — без панели в том числе.
-info "Обновляю mtproto/.env (формат SECRET_N)…"
-cat > "${MTPROTO_DIR}/.env" <<EOF
+# ─── Конвертируем mtproto .env в формат SECRET_N (только если нужно) ────────
+if grep -q '^SECRET_1=' "${MTPROTO_DIR}/.env" 2>/dev/null; then
+    ok "mtproto/.env уже в формате SECRET_N — не трогаю"
+else
+    info "Конвертирую mtproto/.env в формат SECRET_N…"
+    cat > "${MTPROTO_DIR}/.env" <<EOF
 PORT=${PROXY_PORT:-2443}
 STATS_PORT=8888
 EE_DOMAIN=${DECOY_DOMAIN}:8443
@@ -165,7 +164,8 @@ SECRET_1=${RAW_KEY}
 SECRET_LABEL_1=default
 SECRET_LIMIT_1=15
 EOF
-ok "mtproto/.env обновлён"
+    ok "mtproto/.env обновлён"
+fi
 
 # ─── Проверяем DNS ──────────────────────────────────────────────────────────
 info "Проверяю DNS для ${DECOY_DOMAIN}…"
@@ -235,6 +235,7 @@ users = [{
     'id': 1,
     'label': 'default',
     'secret': '${EE_SECRET}',
+    'maxConn': 15,
     'active': True,
     'created': datetime.now(timezone.utc).strftime('%Y-%m-%d'),
     'lastSeen': 'never',
@@ -282,9 +283,9 @@ ok "MTProto docker-compose обновлён"
 info "Скачиваю backend…"
 BACKEND_DIR="${SERVICE_DIR}/backend"
 for f in Dockerfile requirements.txt main.py auth.py users.py teleproxy_config.py; do
-    curl -fsSL "${REPO_BASE}/panel/backend/${f}" -o "${BACKEND_DIR}/${f}" \
-        || fail "Не удалось скачать ${f}"
+    curl -fsSL "${REPO_BASE}/panel/backend/${f}" -o "${BACKEND_DIR}/${f}" &
 done
+wait || fail "Не удалось скачать файлы backend"
 ok "Backend файлы скачаны"
 
 # ─── Скачиваем фронтенд (pre-built dist) ────────────────────────────────────
@@ -477,17 +478,16 @@ ok "Traefik catch-all настроен"
 cd "$SERVICE_DIR"
 
 info "Сборка backend-образа…"
-docker compose build || fail "Сборка backend-образа не удалась (см. вывод выше)"
+BUILD_OUT=$(docker compose build 2>&1) \
+    || { echo "$BUILD_OUT"; fail "Сборка backend-образа не удалась"; }
 
 info "Запуск панели…"
 docker compose up -d --remove-orphans
-sleep 3
 
 # ─── Перезапускаем MTProto с TOML ───────────────────────────────────────────
 info "Перезапускаю MTProto с TOML-конфигом…"
 cd "${MTPROTO_DIR}"
 docker compose up -d --force-recreate
-sleep 3
 
 if docker ps --format '{{.Names}}' | grep -q mtproto; then
     ok "MTProto запущен с TOML"
