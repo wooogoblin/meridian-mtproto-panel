@@ -3,20 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sign In</title>
+<title>Meridian Node</title>
 <meta name="robots" content="noindex, nofollow">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
-  background: #0a0c10;
-  color: #b0b8c4;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: #0b0e17;
+  color: #e2e8f0;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   -webkit-font-smoothing: antialiased;
+  font-size: 14px;
 }
 
 .center {
@@ -30,8 +31,8 @@ body {
 .card {
   width: 100%;
   max-width: 380px;
-  background: #0f1118;
-  border: 1px solid #1a1e28;
+  background: #111827;
+  border: 1px solid #1e293b;
   border-radius: 10px;
   padding: 36px 32px;
   opacity: 0;
@@ -46,16 +47,25 @@ body {
   gap: 10px;
   margin-bottom: 4px;
 }
+.brand-icon {
+  width: 32px; height: 32px;
+  background: rgba(59, 130, 246, 0.15);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.brand-icon svg { width: 16px; height: 16px; }
 .brand-name {
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
   color: #e2e8f0;
   letter-spacing: -0.3px;
 }
 .tagline {
-  font-size: 13px;
-  color: #4a5568;
+  font-size: 12px;
+  color: #475569;
   margin-bottom: 28px;
+  letter-spacing: 0.02em;
 }
 
 .alert {
@@ -72,26 +82,28 @@ body {
 .fg { margin-bottom: 14px; }
 .fg label {
   display: block;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
-  color: #64748b;
+  color: #475569;
   margin-bottom: 5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 .fg input {
   width: 100%;
   padding: 9px 11px;
-  background: #0a0c10;
-  border: 1px solid #1e2330;
+  background: #0f1624;
+  border: 1px solid #1e293b;
   border-radius: 6px;
   color: #e2e8f0;
   font-size: 14px;
-  font-family: 'IBM Plex Mono', monospace;
+  font-family: inherit;
   outline: none;
   transition: border-color .15s;
 }
-.fg input:focus    { border-color: #2563eb; }
+.fg input:focus    { border-color: #3b82f6; }
 .fg input:disabled { opacity: .4; }
-.fg input::placeholder { color: #2a3040; }
+.fg input::placeholder { color: #1e293b; }
 
 .row {
   display: flex;
@@ -99,16 +111,16 @@ body {
   gap: 8px;
   margin-bottom: 22px;
   font-size: 13px;
-  color: #64748b;
+  color: #475569;
   cursor: pointer;
   user-select: none;
 }
-.row input[type=checkbox] { accent-color: #2563eb; width: 14px; height: 14px; }
+.row input[type=checkbox] { accent-color: #3b82f6; width: 14px; height: 14px; }
 
 .btn {
   width: 100%;
   height: 40px;
-  background: #2563eb;
+  background: #3b82f6;
   color: #fff;
   border: none;
   border-radius: 6px;
@@ -123,7 +135,7 @@ body {
   transition: background .15s;
 }
 .btn:hover    { background: #1d4ed8; }
-.btn.locked   { background: #161a24; color: #4a5568; cursor: not-allowed; }
+.btn.locked   { background: #141d2e; color: #475569; cursor: not-allowed; }
 .btn:disabled { cursor: not-allowed; }
 
 .spinner {
@@ -137,10 +149,10 @@ body {
 
 .ft {
   padding: 10px 20px;
-  border-top: 1px solid #161a24;
+  border-top: 1px solid #1e293b;
   text-align: center;
   font-size: 11px;
-  color: #1e2330;
+  color: #1e293b;
   opacity: 0;
   transition: opacity .5s ease .3s;
 }
@@ -153,11 +165,13 @@ body {
   <div class="card" id="card">
 
     <div class="brand">
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-        <rect width="28" height="28" rx="6" fill="#0ea5e9"/>
-        <text x="14" y="20" text-anchor="middle" font-size="17" font-weight="700" font-family="system-ui, sans-serif" fill="white">M</text>
-      </svg>
-      <span class="brand-name">Meridian</span>
+      <div class="brand-icon">
+        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M8 2L13 5V11L8 14L3 11V5L8 2Z" stroke="#3b82f6" stroke-width="1.5" stroke-linejoin="round"/>
+          <circle cx="8" cy="8" r="1.5" fill="#3b82f6"/>
+        </svg>
+      </div>
+      <span class="brand-name">Meridian Node</span>
     </div>
     <div class="tagline">Authentication required</div>
 
@@ -182,7 +196,7 @@ body {
   </div>
 </div>
 
-<div class="ft" id="ft">&copy; 2026 Meridian Systems</div>
+<div class="ft" id="ft">&copy; 2026 Meridian Node</div>
 
 <script>
 (function () {
