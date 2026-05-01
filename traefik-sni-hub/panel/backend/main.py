@@ -136,14 +136,14 @@ async def me(user: AuthUser):
 # ─── Users ────────────────────────────────────────────────────────────────────
 
 class CreateUserRequest(BaseModel):
-    label: str
+    name: str
     maxConn: int
 
 
 class UpdateUserRequest(BaseModel):
     active: Optional[bool] = None
     maxConn: Optional[int] = None
-    label: Optional[str] = None
+    name: Optional[str] = None
 
 
 @app.get("/api/v1/users")
@@ -153,13 +153,13 @@ async def list_users(user: AuthUser):
 
 @app.post("/api/v1/users", status_code=201)
 async def create_user(body: CreateUserRequest, user: AuthUser):
-    label = body.label.strip()
-    if not label or not all(c.isalnum() or c in "-_" for c in label):
-        raise HTTPException(status_code=400, detail="Label: letters, digits, - and _ only")
+    name = body.name.strip()
+    if not name or not all(c.isalnum() or c in "-_" for c in name):
+        raise HTTPException(status_code=400, detail="Name: letters, digits, - and _ only")
     if not 1 <= body.maxConn <= 100:
         raise HTTPException(status_code=400, detail="maxConn must be between 1 and 100")
     try:
-        return users_module.create_user(label, body.maxConn)
+        return users_module.create_user(name, body.maxConn)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -168,11 +168,14 @@ async def create_user(body: CreateUserRequest, user: AuthUser):
 async def update_user(user_id: int, body: UpdateUserRequest, user: AuthUser):
     if body.maxConn is not None and not 1 <= body.maxConn <= 100:
         raise HTTPException(status_code=400, detail="maxConn must be between 1 and 100")
-    if body.label is not None:
-        lbl = body.label.strip()
-        if not lbl or not all(c.isalnum() or c in "-_" for c in lbl):
-            raise HTTPException(status_code=400, detail="Label: letters, digits, - and _ only")
-    result = users_module.update_user(user_id, active=body.active, max_conn=body.maxConn, label=body.label.strip() if body.label else None)
+    if body.name is not None:
+        n = body.name.strip()
+        if not n or not all(c.isalnum() or c in "-_" for c in n):
+            raise HTTPException(status_code=400, detail="Name: letters, digits, - and _ only")
+    try:
+        result = users_module.update_user(user_id, active=body.active, max_conn=body.maxConn, name=body.name.strip() if body.name else None)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if result is None:
         raise HTTPException(status_code=404, detail="User not found")
     return result

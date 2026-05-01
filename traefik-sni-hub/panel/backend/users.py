@@ -43,7 +43,7 @@ def _raw_key(full_secret: str) -> str:
 
 
 def _toml_entry_for(meta_user: dict, max_conn: int) -> dict:
-    return {"key": _raw_key(meta_user["secret"]), "label": meta_user.get("label", "user"), "limit": max_conn}
+    return {"key": _raw_key(meta_user["secret"]), "label": meta_user.get("name", "user"), "limit": max_conn}
 
 
 def _merge(meta: list[dict], env: dict, conn_stats: dict[str, int] | None = None) -> list[dict]:
@@ -55,10 +55,10 @@ def _merge(meta: list[dict], env: dict, conn_stats: dict[str, int] | None = None
         env_entry = secret_map.get(_raw_key(m["secret"]), {})
         result.append({
             "id":       m["id"],
-            "label":    m["label"],
+            "name":     m["name"],
             "secret":   m["secret"],
             "maxConn":  env_entry.get("limit", m.get("maxConn", 15)),
-            "conn":     conn_stats.get(m["label"], 0),
+            "conn":     conn_stats.get(m["name"], 0),
             "active":   m.get("active", True),
             "created":  m["created"],
             "lastSeen": m.get("lastSeen", "never"),
@@ -89,9 +89,12 @@ def list_users() -> list[dict]:
     return users
 
 
-def create_user(label: str, max_conn: int) -> dict:
+def create_user(name: str, max_conn: int) -> dict:
     meta = _load_meta()
     env  = teleproxy_config.read_env()
+
+    if any(m["name"] == name for m in meta):
+        raise ValueError(f"Name '{name}' is already taken")
 
     raw         = secrets.token_hex(16)
     full_secret = _build_full_secret(raw)
@@ -99,14 +102,14 @@ def create_user(label: str, max_conn: int) -> dict:
 
     entry = {
         "id":       new_id,
-        "label":    label,
+        "name":     name,
         "secret":   full_secret,
         "maxConn":  max_conn,
         "active":   True,
         "created":  datetime.now(timezone.utc).strftime("%Y-%m-%d"),
         "lastSeen": "never",
     }
-    teleproxy_config.add_secret(env, {"key": raw, "label": label, "limit": max_conn})
+    teleproxy_config.add_secret(env, {"key": raw, "label": name, "limit": max_conn})
 
     meta.append(entry)
     _save_meta(meta)
@@ -114,10 +117,10 @@ def create_user(label: str, max_conn: int) -> dict:
     teleproxy_config.write_toml(env)
     teleproxy_config.reload_teleproxy()
 
-    return {**entry, "maxConn": max_conn, "conn": 0}
+    return {**entry, "name": name, "maxConn": max_conn, "conn": 0}
 
 
-def update_user(user_id: int, active: Optional[bool] = None, max_conn: Optional[int] = None, label: Optional[str] = None) -> Optional[dict]:
+def update_user(user_id: int, active: Optional[bool] = None, max_conn: Optional[int] = None, name: Optional[str] = None) -> Optional[dict]:
     meta = _load_meta()
     env  = teleproxy_config.read_env()
 
@@ -129,9 +132,11 @@ def update_user(user_id: int, active: Optional[bool] = None, max_conn: Optional[
     current_slot = next((s for s in teleproxy_config.get_secrets(env) if s["key"] == raw_key), {})
     current_max  = current_slot.get("limit", max_conn or 15)
 
-    if label is not None:
-        entry["label"] = label
-        teleproxy_config.update_secret_label(env, raw_key, label)
+    if name is not None:
+        if any(m["name"] == name and m["id"] != user_id for m in meta):
+            raise ValueError(f"Name '{name}' is already taken")
+        entry["name"] = name
+        teleproxy_config.update_secret_label(env, raw_key, name)
 
     if active is not None:
         entry["active"] = active
@@ -152,7 +157,7 @@ def update_user(user_id: int, active: Optional[bool] = None, max_conn: Optional[
 
     return {
         "id":       entry["id"],
-        "label":    entry["label"],
+        "name":     entry["name"],
         "secret":   entry["secret"],
         "maxConn":  current_max,
         "conn":     0,

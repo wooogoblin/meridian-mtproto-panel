@@ -17,10 +17,10 @@ const api = {
   },
   getConfig:  ()           => api._fetch('/api/v1/config'),
   getUsers:   ()           => api._fetch('/api/v1/users'),
-  createUser: (label, maxConn) => api._fetch('/api/v1/users', {
+  createUser: (name, maxConn) => api._fetch('/api/v1/users', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ label, maxConn }),
+    body: JSON.stringify({ name, maxConn }),
   }),
   updateUser: (id, data)   => api._fetch(`/api/v1/users/${id}`, {
     method: 'PUT',
@@ -43,14 +43,14 @@ function formatLastSeen(value) {
   return dt.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
 }
 
-function initials(label) {
-  return label.slice(0, 2).toUpperCase()
+function initials(name) {
+  return name.slice(0, 2).toUpperCase()
 }
 
-function avatarColor(label) {
+function avatarColor(name) {
   const colors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899']
   let h = 0
-  for (let i = 0; i < label.length; i++) h = (h * 31 + label.charCodeAt(i)) >>> 0
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0
   return colors[h % colors.length]
 }
 
@@ -115,15 +115,15 @@ function Modal({ title, onClose, children }) {
 
 // ─── AddUserModal ─────────────────────────────────────────────────────────────
 function AddUserModal({ onAdd, onClose }) {
-  const [label, setLabel]     = useState('')
+  const [name, setName]       = useState('')
   const [maxConn, setMaxConn] = useState('15')
   const [error, setError]     = useState('')
   const [busy, setBusy]       = useState(false)
 
   async function submit(e) {
     e.preventDefault()
-    const trimmed = label.trim()
-    if (!trimmed) { setError('Label is required'); return }
+    const trimmed = name.trim()
+    if (!trimmed) { setError('Name is required'); return }
     if (!/^[a-z0-9_-]+$/i.test(trimmed)) { setError('Only letters, digits, - and _ allowed'); return }
     const n = parseInt(maxConn, 10)
     if (!n || n < 1 || n > 100) { setError('Connections: 1–100'); return }
@@ -140,12 +140,12 @@ function AddUserModal({ onAdd, onClose }) {
     <Modal title="New user" onClose={onClose}>
       <form onSubmit={submit} className="modal-body">
         <label className="form-label">
-          Label
+          Name
           <input
             className="form-input"
             placeholder="e.g. alice"
-            value={label}
-            onChange={e => { setLabel(e.target.value); setError('') }}
+            value={name}
+            onChange={e => { setName(e.target.value); setError('') }}
             autoFocus
           />
         </label>
@@ -178,7 +178,7 @@ function DeleteModal({ user, onConfirm, onClose, busy }) {
     <Modal title="Delete user" onClose={onClose}>
       <div className="modal-body">
         <p className="modal-text">
-          Remove <strong style={{ color: 'var(--text-primary)' }}>{user.label}</strong>?
+          Remove <strong style={{ color: 'var(--text-primary)' }}>{user.name}</strong>?
           All connections using this secret will be terminated immediately.
         </p>
         <div className="modal-actions">
@@ -215,13 +215,13 @@ function UserRow({ user, selected, onClick }) {
   const pct = user.maxConn > 0 ? (user.conn / user.maxConn) * 100 : 0
   return (
     <button className={`user-row ${selected ? 'user-row--active' : ''}`} onClick={onClick}>
-      <div className="user-row-avatar" style={{ background: avatarColor(user.label) }}>
-        {initials(user.label)}
+      <div className="user-row-avatar" style={{ background: avatarColor(user.name) }}>
+        {initials(user.name)}
       </div>
       <div className="user-row-info">
         <div className="user-row-name">
           <StatusDot active={user.active} />
-          {user.label}
+          {user.name}
         </div>
         <div className="user-row-bar">
           <div className="mini-bar">
@@ -311,9 +311,9 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, onBack, copied
   const [editingConn,  setEditingConn]  = useState(false)
   const [connInput,    setConnInput]    = useState(user.maxConn)
   const [connBusy,     setConnBusy]     = useState(false)
-  const [editingLabel, setEditingLabel] = useState(false)
-  const [labelInput,   setLabelInput]   = useState(user.label)
-  const [labelBusy,    setLabelBusy]    = useState(false)
+  const [editingName, setEditingName] = useState(false)
+  const [nameInput,   setNameInput]   = useState(user.name)
+  const [nameBusy,    setNameBusy]    = useState(false)
   const link     = buildTgLink(user.secret, serverIp)
   const pct      = user.maxConn > 0 ? Math.round((user.conn / user.maxConn) * 100) : 0
   const barColor = pct > 80 ? 'var(--red)' : pct > 55 ? 'var(--yellow)' : 'var(--accent)'
@@ -329,15 +329,15 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, onBack, copied
     }
   }
 
-  async function saveLabel() {
-    const trimmed = labelInput.trim()
+  async function saveName() {
+    const trimmed = nameInput.trim()
     if (!trimmed || !/^[a-z0-9_-]+$/i.test(trimmed)) return
-    setLabelBusy(true)
+    setNameBusy(true)
     try {
-      await onUpdate(user.id, { label: trimmed })
-      setEditingLabel(false)
+      await onUpdate(user.id, { name: trimmed })
+      setEditingName(false)
     } finally {
-      setLabelBusy(false)
+      setNameBusy(false)
     }
   }
 
@@ -348,24 +348,24 @@ function UserDetail({ user, serverIp, domain, onToggle, onDelete, onBack, copied
         <button className="detail-back-btn" onClick={onBack} title="Back to users">
           <IconArrowLeft />
         </button>
-        <div className="detail-avatar" style={{ background: avatarColor(user.label) }}>
-          {initials(user.label)}
+        <div className="detail-avatar" style={{ background: avatarColor(user.name) }}>
+          {initials(user.name)}
         </div>
         <div className="detail-title">
-          {editingLabel
+          {editingName
             ? <div className="label-edit-row">
-                <input className="label-edit-input" value={labelInput} autoFocus
-                       onChange={e => setLabelInput(e.target.value)}
-                       onKeyDown={e => { if (e.key === 'Enter') saveLabel(); if (e.key === 'Escape') setEditingLabel(false) }} />
-                <button className="btn btn-sm btn-primary" disabled={labelBusy} onClick={saveLabel}>
-                  {labelBusy ? <span className="btn-spinner" /> : 'Save'}
+                <input className="label-edit-input" value={nameInput} autoFocus
+                       onChange={e => setNameInput(e.target.value)}
+                       onKeyDown={e => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false) }} />
+                <button className="btn btn-sm btn-primary" disabled={nameBusy} onClick={saveName}>
+                  {nameBusy ? <span className="btn-spinner" /> : 'Save'}
                 </button>
-                <button className="btn btn-sm btn-ghost" disabled={labelBusy} onClick={() => setEditingLabel(false)}>✕</button>
+                <button className="btn btn-sm btn-ghost" disabled={nameBusy} onClick={() => setEditingName(false)}>✕</button>
               </div>
             : <h2 className="detail-name">
-                {user.label}
+                {user.name}
                 <button className="icon-btn" style={{ width: 22, height: 22, marginLeft: 6 }} title="Rename"
-                  onClick={() => { setLabelInput(user.label); setEditingLabel(true) }}>
+                  onClick={() => { setNameInput(user.name); setEditingName(true) }}>
                   <IconEdit />
                 </button>
               </h2>
@@ -544,8 +544,8 @@ export default function App() {
   const selectedUser = users.find(u => u.id === selected) ?? null
 
   // ── handlers ─────────────────────────────────────────────────────────────
-  async function handleAdd(label, maxConn) {
-    const created = await api.createUser(label, maxConn)
+  async function handleAdd(name, maxConn) {
+    const created = await api.createUser(name, maxConn)
     if (!created) return
     setUsers(prev => [...prev, created])
     setSelected(created.id)
