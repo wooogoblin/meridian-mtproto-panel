@@ -135,7 +135,7 @@ def fetch_conn_stats() -> dict[str, int]:
     for line in text.splitlines():
         if not line.startswith('teleproxy_secret_connections{'):
             continue
-        m = re.match(r'teleproxy_secret_connections\{label="([^"]+)"\}\s+(\d+)', line)
+        m = re.match(r'teleproxy_secret_connections\{secret="([^"]+)"\}\s+(\d+)', line)
         if m:
             result[m.group(1)] = int(m.group(2))
     return result
